@@ -1,7 +1,5 @@
-import { createMMKV } from 'react-native-mmkv';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-
-export const storage = createMMKV();
 
 export type User = {
   id: string;
@@ -14,20 +12,22 @@ type AuthState = {
   token: string | null;
   user: User | null;
   isLoggedIn: boolean;
+  isRestoring: boolean;
 
-  login: (token: string, user: User) => void;
-  logout: () => void;
-  restoreSession: () => void;
+  login: (token: string, user: User) => Promise<void>;
+  logout: () => Promise<void>;
+  restoreSession: () => Promise<void>;
 };
 
 export const useAuthStore = create<AuthState>(set => ({
   token: null,
   user: null,
   isLoggedIn: false,
+  isRestoring: true,
 
-  login: (token, user) => {
-    storage.set('token', token);
-    storage.set('user', JSON.stringify(user));
+  login: async (token, user) => {
+    await AsyncStorage.setItem('token', token);
+    await AsyncStorage.setItem('user', JSON.stringify(user));
 
     set({
       token,
@@ -36,9 +36,9 @@ export const useAuthStore = create<AuthState>(set => ({
     });
   },
 
-  logout: () => {
-    storage.remove('token');
-    storage.remove('user');
+  logout: async () => {
+    await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem('user');
 
     set({
       token: null,
@@ -47,15 +47,36 @@ export const useAuthStore = create<AuthState>(set => ({
     });
   },
 
-  restoreSession: () => {
-    const token = storage.getString('token');
-    const userString = storage.getString('user');
+  restoreSession: async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const userString = await AsyncStorage.getItem('user');
 
-    if (token && userString) {
+      if (token && userString) {
+        set({
+          token,
+          user: JSON.parse(userString),
+          isLoggedIn: true,
+          isRestoring: false,
+        });
+        return;
+      }
+
       set({
-        token,
-        user: JSON.parse(userString),
-        isLoggedIn: true,
+        token: null,
+        user: null,
+        isLoggedIn: false,
+        isRestoring: false,
+      });
+    } catch {
+      await AsyncStorage.removeItem('token');
+      await AsyncStorage.removeItem('user');
+
+      set({
+        token: null,
+        user: null,
+        isLoggedIn: false,
+        isRestoring: false,
       });
     }
   },
