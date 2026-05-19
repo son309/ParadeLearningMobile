@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: theme.colors.text,
   },

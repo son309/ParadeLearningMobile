@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   SafeAreaView,
   StyleSheet,
@@ -12,6 +13,8 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import HomeHeader from '../../components/HomeHeader';
+import BottomNav from '../../components/BottomNav';
+import Avatar from '../../components/Avatar';
 import PostCard from '../../components/PostCard';
 import { postApi } from '../../network/postApi';
 import { theme } from '../../constants/theme';
@@ -24,7 +27,7 @@ const PAGE_SIZE = 10;
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -147,6 +150,21 @@ export default function HomeScreen() {
         }
         onEndReached={loadMore}
         onEndReachedThreshold={0.6}
+        ListHeaderComponent={
+          <Pressable
+            style={styles.composer}
+            onPress={() => navigation.navigate('CreatePost')}
+          >
+            <Avatar
+              uri={user?.avatar}
+              name={user?.username}
+              size={40}
+            />
+            <View style={styles.composerInput}>
+              <Text style={styles.composerText}>What's on your mind?</Text>
+            </View>
+          </Pressable>
+        }
         ListEmptyComponent={
           !refreshing ? (
             <View style={styles.emptyState}>
@@ -162,6 +180,13 @@ export default function HomeScreen() {
           ) : null
         }
       />
+      <BottomNav
+        active="Home"
+        onPressHome={() => navigation.navigate('Home')}
+        onPressSearch={() => navigation.navigate('Search')}
+        onPressCourses={() => navigation.navigate('Courses')}
+        onPressProfile={() => navigation.navigate('Profile')}
+      />
     </SafeAreaView>
   );
 }
@@ -173,7 +198,30 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.lg,
+    paddingBottom: theme.spacing.lg + 72,
+  },
+  composer: {
+    marginHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.sm,
+    padding: theme.spacing.sm,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  composerInput: {
+    flex: 1,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.surface2,
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.md,
+  },
+  composerText: {
+    color: theme.colors.muted,
   },
   emptyState: {
     paddingVertical: theme.spacing.xl,
