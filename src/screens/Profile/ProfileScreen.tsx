@@ -14,6 +14,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
+import LinearGradient from 'react-native-linear-gradient';
 import { theme } from '../../constants/theme';
 import Avatar from '../../components/Avatar';
 import PostCard from '../../components/PostCard';
@@ -31,11 +32,32 @@ const extraKey = (userId: string) => `profile_extra_${userId}`;
 const ensureOnline = async () => {
   const state = await NetInfo.fetch();
   if (!state.isConnected) {
-    Alert.alert('No Internet Connection');
+    Alert.alert('Không có kết nối mạng');
     return false;
   }
   return true;
 };
+
+type InfoRowProps = { emoji: string; text: string; isLink?: boolean };
+function InfoRow({ emoji, text, isLink }: InfoRowProps) {
+  return (
+    <View style={infoStyles.row}>
+      <Text style={infoStyles.emoji}>{emoji}</Text>
+      <Text style={[infoStyles.text, isLink && infoStyles.link]}>{text}</Text>
+    </View>
+  );
+}
+const infoStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  emoji: { fontSize: 18, width: 26, textAlign: 'center' },
+  text: { fontSize: theme.font.md, color: theme.colors.text, flex: 1 },
+  link: { color: theme.colors.primary },
+});
 
 export default function ProfileScreen() {
   const navigation = useNavigation<any>();
@@ -97,7 +119,7 @@ export default function ProfileScreen() {
         link: extras.link || '',
       });
     } catch (error: any) {
-      Alert.alert(error?.message || 'Khong the tai thong tin ca nhan');
+      Alert.alert(error?.message || 'Không thể tải thông tin cá nhân');
     } finally {
       setLoading(false);
     }
@@ -153,7 +175,7 @@ export default function ProfileScreen() {
           }
         }
       } catch (error: any) {
-        Alert.alert(error?.message || 'Khong the tai bai viet');
+        Alert.alert(error?.message || 'Không thể tải bài viết');
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -176,7 +198,7 @@ export default function ProfileScreen() {
 
   const saveProfile = async () => {
     if (!token) {
-      Alert.alert('Vui long dang nhap lai');
+      Alert.alert('Vui lòng đăng nhập lại');
       return;
     }
     if (!(await ensureOnline())) {
@@ -185,7 +207,7 @@ export default function ProfileScreen() {
 
     const trimmedName = draft.name.trim();
     if (!trimmedName) {
-      Alert.alert('Ten khong duoc de trong');
+      Alert.alert('Tên không được để trống');
       return;
     }
 
@@ -213,62 +235,139 @@ export default function ProfileScreen() {
       setEditing(false);
       loadProfile();
     } catch (error: any) {
-      Alert.alert(error?.message || 'Khong the cap nhat thong tin');
+      Alert.alert(error?.message || 'Không thể cập nhật thông tin');
     }
   };
 
   const renderHeader = () => {
     const coverUri = profile?.coverImage;
-    const name = profile?.username || 'Nguoi dung';
+    const name = profile?.username || 'Người dùng';
     const bio = profile?.description || '';
+    const followerCount = '248';
+    const postCount = posts.length;
 
     return (
       <View>
+        {/* ─── Cover Photo ─── */}
         <View style={styles.coverWrap}>
           {coverUri ? (
-            <Image source={{ uri: coverUri }} style={styles.coverImage} />
+            <>
+              <Image source={{ uri: coverUri }} style={styles.coverImage} />
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.35)']}
+                style={styles.coverOverlay}
+              />
+            </>
           ) : (
-            <View style={styles.coverFallback} />
+            <LinearGradient
+              colors={['#1a6fd8', '#1877F2', '#6eb3ff']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.coverFallback}>
+              <Text style={styles.coverEmoji}>🎓</Text>
+              <Text style={styles.coverTagline}>Parade Learning</Text>
+            </LinearGradient>
           )}
         </View>
+
+        {/* ─── Profile Info Card ─── */}
         <View style={styles.profileCard}>
-          <Avatar uri={profile?.avatar} name={name} size={96} />
-          <Text style={styles.name}>{name}</Text>
-          {bio ? <Text style={styles.bio}>{bio}</Text> : null}
-          {(extras.location || extras.link) && (
-            <View style={styles.metaList}>
+          {/* Avatar overlapping cover */}
+          <View style={styles.avatarRow}>
+            <View style={styles.avatarBorder}>
+              <Avatar uri={profile?.avatar} name={name} size={88} />
+            </View>
+            <Pressable
+              style={({ pressed }) => [
+                styles.editCoverBtn,
+                pressed && { opacity: 0.8 },
+              ]}>
+              <Text style={styles.editCoverText}>📷</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.profileName}>{name}</Text>
+
+          {bio ? <Text style={styles.profileBio}>{bio}</Text> : null}
+
+          {/* Stats Row */}
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{postCount}</Text>
+              <Text style={styles.statLabel}>Bài viết</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{followerCount}</Text>
+              <Text style={styles.statLabel}>Bạn bè</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>
+                {user?.role === 'GV' ? 'GV' : 'HV'}
+              </Text>
+              <Text style={styles.statLabel}>Vai trò</Text>
+            </View>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.actionRow}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && styles.primaryBtnPressed,
+              ]}
+              onPress={() => setEditing(true)}>
+              <LinearGradient
+                colors={['#2488ff', '#1877F2', '#0d60d8']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.primaryBtnGradient}>
+                <Text style={styles.primaryBtnText}>✏️ Chỉnh sửa</Text>
+              </LinearGradient>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                pressed && styles.secondaryBtnPressed,
+              ]}
+              onPress={() => navigation.navigate('Courses')}>
+              <Text style={styles.secondaryBtnText}>
+                {user?.role === 'GV' ? '👨‍🏫  Học sinh' : '📚  Khóa học'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.iconBtn,
+                pressed && styles.iconBtnPressed,
+              ]}
+              onPress={logout}>
+              <Text style={styles.iconBtnText}>⋯</Text>
+            </Pressable>
+          </View>
+
+          {/* Info Section */}
+          {(extras.location || extras.link || bio) && (
+            <View style={styles.infoSection}>
+              <View style={styles.sectionDivider} />
+              <Text style={styles.sectionTitle}>Giới thiệu</Text>
+              {bio ? <InfoRow emoji="📝" text={bio} /> : null}
               {extras.location ? (
-                <Text style={styles.metaText}>{extras.location}</Text>
+                <InfoRow emoji="📍" text={extras.location} />
               ) : null}
               {extras.link ? (
-                <Text style={[styles.metaText, styles.linkText]}>
-                  {extras.link}
-                </Text>
+                <InfoRow emoji="🔗" text={extras.link} isLink />
               ) : null}
             </View>
           )}
-          <View style={styles.actions}>
-            <Pressable
-              style={styles.primaryButton}
-              onPress={() => setEditing(true)}
-            >
-              <Text style={styles.primaryButtonText}>Edit profile</Text>
-            </Pressable>
-            <Pressable style={styles.secondaryButton} onPress={logout}>
-              <Text style={styles.secondaryButtonText}>Log out</Text>
-            </Pressable>
-          </View>
-          <Pressable
-            style={styles.courseButton}
-            onPress={() => navigation.navigate('Courses')}
-          >
-            <Text style={styles.courseButtonText}>
-              {user?.role === 'GV' ? 'Manage students' : 'Course requests'}
-            </Text>
-          </Pressable>
         </View>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Posts</Text>
+
+        {/* ─── Posts Section Header ─── */}
+        <View style={styles.postsSectionHeader}>
+          <Text style={styles.postsSectionTitle}>Bài viết</Text>
+          <Pressable style={styles.filterBtn}>
+            <Text style={styles.filterBtnText}>Bộ lọc  ⌄</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -294,84 +393,97 @@ export default function ProfileScreen() {
         onEndReachedThreshold={0.6}
         ListFooterComponent={
           loadingMore ? (
-            <Text style={styles.footerText}>Dang tai them...</Text>
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Đang tải thêm...</Text>
+            </View>
           ) : done && posts.length > 0 ? (
-            <Text style={styles.footerText}>Da xem het</Text>
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>✓ Bạn đã xem hết rồi</Text>
+            </View>
           ) : null
         }
         ListEmptyComponent={
           !loading ? (
-            <Text style={styles.emptyText}>Chua co bai viet nao</Text>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>📭</Text>
+              <Text style={styles.emptyText}>Chưa có bài viết nào</Text>
+            </View>
           ) : null
         }
       />
 
-      <Modal transparent visible={editing} animationType="fade">
+      {/* ─── Edit Profile Modal ─── */}
+      <Modal transparent visible={editing} animationType="slide">
         <Pressable
           style={styles.modalOverlay}
-          onPress={() => setEditing(false)}
-        >
+          onPress={() => setEditing(false)}>
           <Pressable
             style={styles.modalCard}
-            onPress={event => event.stopPropagation()}
-          >
+            onPress={event => event.stopPropagation()}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Edit profile</Text>
-            <Text style={styles.modalLabel}>Name</Text>
-            <TextInput
-              value={draft.name}
-              onChangeText={value =>
-                setDraft(current => ({ ...current, name: value }))
-              }
-              style={styles.input}
-              placeholder="Name"
-              placeholderTextColor={theme.colors.muted}
-            />
-            <Text style={styles.modalLabel}>Description (max 150)</Text>
-            <TextInput
-              value={draft.description}
-              onChangeText={value =>
-                setDraft(current => ({ ...current, description: value }))
-              }
-              style={[styles.input, styles.textArea]}
-              placeholder="Tell something about you"
-              placeholderTextColor={theme.colors.muted}
-              multiline
-              maxLength={150}
-            />
-            <Text style={styles.modalCount}>
-              {draft.description.length}/150
-            </Text>
-            <Text style={styles.modalLabel}>Location</Text>
-            <TextInput
-              value={draft.location}
-              onChangeText={value =>
-                setDraft(current => ({ ...current, location: value }))
-              }
-              style={styles.input}
-              placeholder="Location"
-              placeholderTextColor={theme.colors.muted}
-            />
-            <Text style={styles.modalLabel}>Link</Text>
-            <TextInput
-              value={draft.link}
-              onChangeText={value =>
-                setDraft(current => ({ ...current, link: value }))
-              }
-              style={styles.input}
-              placeholder="https://..."
-              placeholderTextColor={theme.colors.muted}
-              autoCapitalize="none"
-            />
+            <Text style={styles.modalTitle}>Chỉnh sửa hồ sơ</Text>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalLabel}>Tên hiển thị</Text>
+              <TextInput
+                value={draft.name}
+                onChangeText={value =>
+                  setDraft(current => ({ ...current, name: value }))
+                }
+                style={styles.input}
+                placeholder="Tên của bạn"
+                placeholderTextColor={theme.colors.muted}
+              />
+
+              <Text style={styles.modalLabel}>Tiểu sử (tối đa 150 ký tự)</Text>
+              <TextInput
+                value={draft.description}
+                onChangeText={value =>
+                  setDraft(current => ({ ...current, description: value }))
+                }
+                style={[styles.input, styles.textArea]}
+                placeholder="Kể gì đó về bạn..."
+                placeholderTextColor={theme.colors.muted}
+                multiline
+                maxLength={150}
+              />
+              <Text style={styles.charCount}>
+                {draft.description.length}/150
+              </Text>
+
+              <Text style={styles.modalLabel}>Vị trí</Text>
+              <TextInput
+                value={draft.location}
+                onChangeText={value =>
+                  setDraft(current => ({ ...current, location: value }))
+                }
+                style={styles.input}
+                placeholder="Thành phố, Quốc gia"
+                placeholderTextColor={theme.colors.muted}
+              />
+
+              <Text style={styles.modalLabel}>Liên kết</Text>
+              <TextInput
+                value={draft.link}
+                onChangeText={value =>
+                  setDraft(current => ({ ...current, link: value }))
+                }
+                style={styles.input}
+                placeholder="https://..."
+                placeholderTextColor={theme.colors.muted}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+            </ScrollView>
+
             <View style={styles.modalActions}>
               <Pressable
-                style={styles.secondaryButton}
-                onPress={() => setEditing(false)}
-              >
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+                style={styles.cancelBtn}
+                onPress={() => setEditing(false)}>
+                <Text style={styles.cancelBtnText}>Hủy</Text>
               </Pressable>
-              <Pressable style={styles.primaryButton} onPress={saveProfile}>
-                <Text style={styles.primaryButtonText}>Save</Text>
+              <Pressable style={styles.saveBtn} onPress={saveProfile}>
+                <Text style={styles.saveBtnText}>Lưu</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -387,112 +499,238 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   list: {
-    paddingBottom: theme.spacing.lg,
+    paddingBottom: theme.spacing.xl,
   },
   coverWrap: {
-    height: 160,
-    backgroundColor: theme.colors.surface,
-  },
-  coverFallback: {
-    flex: 1,
+    height: 220,
     backgroundColor: theme.colors.primaryLight,
+    overflow: 'hidden',
   },
   coverImage: {
     width: '100%',
     height: '100%',
   },
+  coverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  coverFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+  },
+  coverEmoji: {
+    fontSize: 52,
+  },
+  coverTagline: {
+    fontSize: theme.font.md,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: 1,
+  },
   profileCard: {
     backgroundColor: theme.colors.surface,
     paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.lg,
-    marginTop: -36,
+    paddingBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
   },
-  name: {
-    marginTop: theme.spacing.sm,
-    fontSize: 20,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  bio: {
-    marginTop: theme.spacing.xs,
-    color: theme.colors.text,
-  },
-  metaList: {
-    marginTop: theme.spacing.sm,
-    gap: 4,
-  },
-  metaText: {
-    fontSize: 13,
-    color: theme.colors.muted,
-  },
-  linkText: {
-    color: theme.colors.primary,
-  },
-  actions: {
-    marginTop: theme.spacing.md,
+  avatarRow: {
     flexDirection: 'row',
-    gap: theme.spacing.sm,
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginTop: -44,
+    marginBottom: theme.spacing.sm,
   },
-  primaryButton: {
-    flex: 1,
-    height: 42,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  avatarBorder: {
+    borderWidth: 4,
+    borderColor: theme.colors.surface,
+    borderRadius: 50,
+    overflow: 'hidden',
   },
-  primaryButtonText: {
-    color: theme.colors.surface,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    flex: 1,
-    height: 42,
-    borderRadius: theme.radius.sm,
+  editCoverBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: theme.colors.surface2,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  secondaryButtonText: {
-    color: theme.colors.text,
-    fontWeight: '600',
-  },
-  courseButton: {
-    marginTop: theme.spacing.sm,
-    height: 40,
-    borderRadius: theme.radius.sm,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.divider,
+  },
+  editCoverText: {
+    fontSize: 16,
+  },
+  profileName: {
+    fontSize: theme.font.xxl,
+    fontWeight: '800',
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  profileBio: {
+    fontSize: theme.font.md,
+    color: theme.colors.textSecondary,
+    lineHeight: 22,
+    marginBottom: theme.spacing.md,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    borderTopWidth: 0.5,
+    borderBottomWidth: 0.5,
+    borderColor: theme.colors.divider,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: theme.font.lg,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+  statLabel: {
+    fontSize: theme.font.xs,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  statDivider: {
+    width: 0.5,
+    height: 32,
+    backgroundColor: theme.colors.divider,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+  },
+  primaryBtn: {
+    flex: 1,
+    height: 44,
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.radius.md,
+    overflow: 'hidden',
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  primaryBtnGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: theme.radius.md,
   },
-  courseButtonText: {
+  primaryBtnPressed: {
+    opacity: 0.85,
+  },
+  primaryBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: theme.font.sm,
+  },
+  secondaryBtn: {
+    flex: 1,
+    height: 44,
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+  },
+  secondaryBtnPressed: {
+    backgroundColor: theme.colors.divider,
+  },
+  secondaryBtnText: {
     color: theme.colors.text,
     fontWeight: '600',
+    fontSize: theme.font.sm,
   },
-  sectionHeader: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: theme.colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+  iconBtn: {
+    width: 44,
+    height: 44,
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+  },
+  iconBtnPressed: {
+    backgroundColor: theme.colors.divider,
+  },
+  iconBtnText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+  },
+  infoSection: {
+    marginTop: theme.spacing.xs,
+  },
+  sectionDivider: {
+    height: 0.5,
+    backgroundColor: theme.colors.divider,
+    marginBottom: theme.spacing.md,
   },
   sectionTitle: {
+    fontSize: theme.font.lg,
     fontWeight: '700',
     color: theme.colors.text,
+    marginBottom: theme.spacing.md,
   },
-  footerText: {
-    textAlign: 'center',
-    color: theme.colors.muted,
-    paddingVertical: theme.spacing.sm,
+  postsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    borderTopWidth: 8,
+    borderTopColor: theme.colors.background,
+    marginBottom: theme.spacing.sm,
+  },
+  postsSectionTitle: {
+    fontSize: theme.font.xl,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+  filterBtn: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.radius.md,
+  },
+  filterBtnText: {
+    fontSize: theme.font.sm,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+  },
+  emptyState: {
+    paddingVertical: theme.spacing.xxl,
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    marginHorizontal: 0,
+  },
+  emptyEmoji: {
+    fontSize: 40,
+    marginBottom: theme.spacing.md,
   },
   emptyText: {
-    textAlign: 'center',
-    color: theme.colors.muted,
-    paddingVertical: theme.spacing.lg,
+    fontSize: theme.font.md,
+    color: theme.colors.textSecondary,
   },
+  footer: {
+    paddingVertical: theme.spacing.md,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: theme.font.sm,
+    color: theme.colors.muted,
+  },
+  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: theme.colors.overlay,
@@ -500,42 +738,50 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     backgroundColor: theme.colors.surface,
-    padding: theme.spacing.lg,
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.xxl,
+    paddingTop: theme.spacing.sm,
+    borderTopLeftRadius: theme.radius.xl,
+    borderTopRightRadius: theme.radius.xl,
+    maxHeight: '85%',
   },
   modalHandle: {
-    width: 48,
+    width: 40,
     height: 4,
     borderRadius: 2,
     backgroundColor: theme.colors.border,
     alignSelf: 'center',
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
   },
   modalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: theme.font.lg,
+    fontWeight: '800',
     color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.lg,
+    textAlign: 'center',
   },
   modalLabel: {
-    fontSize: 12,
+    fontSize: theme.font.sm,
     fontWeight: '600',
-    color: theme.colors.muted,
-    marginTop: theme.spacing.sm,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.xs,
   },
-  modalCount: {
+  charCount: {
     textAlign: 'right',
-    fontSize: 11,
+    fontSize: theme.font.xs,
     color: theme.colors.muted,
+    marginTop: 2,
   },
   input: {
-    marginTop: theme.spacing.xs,
-    backgroundColor: theme.colors.surface2,
-    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.inputBg,
+    borderRadius: theme.radius.md,
     paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
+    paddingVertical: theme.spacing.md,
     color: theme.colors.text,
+    fontSize: theme.font.md,
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
   },
   textArea: {
     height: 90,
@@ -543,7 +789,35 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: 'row',
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.lg,
+    gap: theme.spacing.md,
+    marginTop: theme.spacing.xl,
+  },
+  cancelBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.colors.surface2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+  },
+  cancelBtnText: {
+    fontSize: theme.font.md,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+  },
+  saveBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnText: {
+    fontSize: theme.font.md,
+    fontWeight: '700',
+    color: '#fff',
   },
 });
