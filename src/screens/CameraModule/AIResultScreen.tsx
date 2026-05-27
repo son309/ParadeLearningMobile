@@ -413,7 +413,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.sm,
     padding: theme.spacing.sm,
     borderWidth: 1,
