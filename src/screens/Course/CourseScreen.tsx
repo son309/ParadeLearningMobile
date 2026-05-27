@@ -427,6 +427,23 @@ function StudentView() {
           <Text style={styles.headerActionText}>Search</Text>
         </Pressable>
       </View>
+
+      {/* Nút nộp bài tập video cho AI chấm điểm */}
+      <Pressable
+        style={styles.submitVideoCard}
+        onPress={() => navigation.navigate('VideoPickerScreen')}>
+        <View style={styles.submitVideoIconWrap}>
+          <Text style={styles.submitVideoIcon}>🤖</Text>
+        </View>
+        <View style={styles.submitVideoInfo}>
+          <Text style={styles.submitVideoTitle}>Nộp bài tập video</Text>
+          <Text style={styles.submitVideoDesc}>
+            Quay 2 góc · AI chấm điểm kỹ thuật tự động
+          </Text>
+        </View>
+        <Text style={styles.submitVideoArrow}>›</Text>
+      </Pressable>
+
       <View style={styles.studentCard}>
         <Text style={styles.studentTitle}>Send request</Text>
         <TextInput
@@ -707,5 +724,48 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontWeight: '700',
     color: theme.colors.text,
+  },
+
+  // Submit Video Card
+  submitVideoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: theme.spacing.lg,
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.xs,
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.md,
+    gap: theme.spacing.sm,
+    ...theme.shadow.card,
+  },
+  submitVideoIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitVideoIcon: {
+    fontSize: 22,
+  },
+  submitVideoInfo: {
+    flex: 1,
+  },
+  submitVideoTitle: {
+    fontWeight: '800',
+    color: '#fff',
+    fontSize: theme.font.md,
+  },
+  submitVideoDesc: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: theme.font.xs,
+    marginTop: 2,
+  },
+  submitVideoArrow: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '300',
   },
 });

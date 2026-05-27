@@ -1,10 +1,32 @@
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import AuthNavigator from './AuthNavigator';
 import MainTabNavigator from './MainTabNavigator';
 import { useAuthStore } from '../store/authStore';
 import { connectSocket, disconnectSocket } from '../network/socket';
+import { VideoPickerScreen, AIResultScreen } from '../screens/CameraModule';
+
+const RootStack = createNativeStackNavigator();
+
+function AppNavigator() {
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Screen name="MainTabs" component={MainTabNavigator} />
+      <RootStack.Screen
+        name="VideoPickerScreen"
+        component={VideoPickerScreen}
+        options={{ animation: 'slide_from_bottom' }}
+      />
+      <RootStack.Screen
+        name="AIResultScreen"
+        component={AIResultScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+    </RootStack.Navigator>
+  );
+}
 
 export default function RootNavigator() {
   const { isLoggedIn, user, restoreSession, logout } = useAuthStore();
@@ -26,7 +48,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      {isLoggedIn ? <MainTabNavigator /> : <AuthNavigator />}
+      {isLoggedIn ? <AppNavigator /> : <AuthNavigator />}
     </NavigationContainer>
   );
 }
