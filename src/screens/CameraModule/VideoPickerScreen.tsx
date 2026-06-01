@@ -86,7 +86,37 @@ export default function VideoPickerScreen() {
         source === 'camera' ? launchCamera : launchImageLibrary;
 
       launcher(options, (response: any) => {
-        if (response.didCancel || response.errorCode) {
+        // Người dùng tự hủy → không cần thông báo
+        if (response.didCancel) {
+          return;
+        }
+
+        // Xử lý từng loại lỗi
+        if (response.errorCode) {
+          switch (response.errorCode) {
+            case 'camera_unavailable':
+              Alert.alert(
+                '📵 Camera không khả dụng',
+                'Máy ảo (Emulator) không có camera thật.\n\n' +
+                  '➜ Hãy dùng nút "🖼 Thư viện" để chọn video có sẵn.\n' +
+                  '➜ Hoặc test trên điện thoại thật.',
+                [{ text: 'Dùng Thư viện', onPress: () => pickVideo(slotKey, 'library') },
+                 { text: 'Đóng', style: 'cancel' }],
+              );
+              break;
+            case 'permission':
+              Alert.alert(
+                '🔒 Cần cấp quyền',
+                'Vào Cài đặt → Ứng dụng → ParadeLearning → Quyền → Bật Camera và Bộ nhớ.',
+              );
+              break;
+            case 'others':
+            default:
+              Alert.alert(
+                'Lỗi',
+                response.errorMessage || 'Không thể mở camera. Thử lại sau.',
+              );
+          }
           return;
         }
 

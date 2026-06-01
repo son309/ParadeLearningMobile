@@ -3,7 +3,6 @@ import {
   Alert,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -368,9 +367,9 @@ export default function PostCard({ post, onChange }: PostCardProps) {
           {loadingComments ? (
             <Text style={styles.loadingText}>Đang tải bình luận...</Text>
           ) : (
-            <ScrollView
-              contentContainerStyle={styles.commentList}
-              nestedScrollEnabled>
+            // Dùng View thay ScrollView để tránh lỗi VirtualizedList lồng nhau
+            // (PostCard được render bên trong FlatList ở HomeScreen/ProfileScreen)
+            <View style={styles.commentList}>
               {comments.map(comment => (
                 <View key={comment.id} style={styles.commentItem}>
                   <Avatar
@@ -386,7 +385,7 @@ export default function PostCard({ post, onChange }: PostCardProps) {
                   </View>
                 </View>
               ))}
-            </ScrollView>
+            </View>
           )}
 
           {canComment ? (

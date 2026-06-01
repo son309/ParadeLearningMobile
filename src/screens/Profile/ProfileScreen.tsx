@@ -6,6 +6,7 @@ import {
   Modal,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -146,15 +147,22 @@ export default function ProfileScreen() {
           setLoadingMore(true);
         }
 
+        let lastPostId: string | undefined;
+        if (!isRefresh) {
+          setPosts(current => {
+            lastPostId = current.length > 0
+              ? current[current.length - 1].post_id
+              : undefined;
+            return current; // không thay đổi state
+          });
+        }
+
         const data = await postApi.getListPosts({
           token,
           index: '0',
           count: PAGE_SIZE.toString(),
           user_id: user.id,
-          last_id:
-            isRefresh || posts.length === 0
-              ? undefined
-              : posts[posts.length - 1].post_id,
+          last_id: isRefresh ? undefined : lastPostId,
         });
 
         const incoming = Array.isArray(data?.posts) ? data.posts : [];
@@ -165,13 +173,12 @@ export default function ProfileScreen() {
           if (incoming.length === 0) {
             setDone(true);
           } else {
-            const merged = [
-              ...posts,
+            setPosts(current => [
+              ...current,
               ...incoming.filter(
-                (p: PostItem) => !posts.find(x => x.post_id === p.post_id),
+                (p: PostItem) => !current.find(x => x.post_id === p.post_id),
               ),
-            ];
-            setPosts(merged);
+            ]);
           }
         }
       } catch (error: any) {
@@ -181,7 +188,8 @@ export default function ProfileScreen() {
         setLoadingMore(false);
       }
     },
-    [token, user?.id, posts],
+
+    [token, user?.id],
   );
 
   useEffect(() => {
