@@ -2,8 +2,10 @@ import type { PostItem } from '../types/post';
 import type { ProfileInfo } from '../types/profile';
 import type {
   CourseItem,
+  CourseListItem,
   EnrollmentRequestItem,
   StudentItem,
+  TeacherListItem,
 } from '../types/course';
 
 export const MOCK_PROFILE: ProfileInfo = {
@@ -139,5 +141,78 @@ export const MOCK_COURSES: CourseItem[] = [
     id: 'mock-teacher-1',
     name: 'Coach Linh',
     avatar: 'https://i.pravatar.cc/150?img=47',
+  },
+];
+
+// Mock cho API get_list_blocks
+export const MOCK_BLOCKED_USERS = [
+  {
+    id: 'mock-blocked-1',
+    name: 'Người bị chặn A',
+    avatar: 'https://i.pravatar.cc/150?img=10',
+  },
+  {
+    id: 'mock-blocked-2',
+    name: 'Người bị chặn B',
+    avatar: 'https://i.pravatar.cc/150?img=20',
+  },
+];
+
+// Mock cho API get_list_teachers — danh sách GV (không cần có bài đăng)
+export const MOCK_TEACHER_LIST: TeacherListItem[] = [
+  {
+    teacher_id: 'mock-teacher-1',
+    username: 'Coach Linh',
+    avatar: 'https://i.pravatar.cc/150?img=47',
+    is_enrolled: '1',
+    is_requested: '0',
+  },
+  {
+    teacher_id: 'mock-teacher-2',
+    username: 'Coach Hà',
+    avatar: 'https://i.pravatar.cc/150?img=32',
+    is_enrolled: '0',
+    is_requested: '1',
+  },
+  {
+    teacher_id: 'mock-teacher-3',
+    username: 'Coach Minh',
+    avatar: 'https://i.pravatar.cc/150?img=56',
+    is_enrolled: '0',
+    is_requested: '0',
+  },
+];
+
+// Mock cho API get_list_courses — is_enrolled và is_requested từ server
+export const MOCK_COURSE_LIST: CourseListItem[] = [
+  {
+    course_id: 'mock-teacher-1',
+    description: 'Khóa học kỹ thuật cơ bản và nâng cao.',
+    username: 'Coach Linh',
+    avatar: 'https://i.pravatar.cc/150?img=47',
+    left_video: '',
+    right_video: '',
+    is_enrolled: '1',
+    is_requested: '0',
+  },
+  {
+    course_id: 'mock-teacher-2',
+    description: 'Luyện tập tư thế và điều hòa nhịp thở.',
+    username: 'Coach Hà',
+    avatar: 'https://i.pravatar.cc/150?img=32',
+    left_video: '',
+    right_video: '',
+    is_enrolled: '0',
+    is_requested: '1',
+  },
+  {
+    course_id: 'mock-teacher-3',
+    description: 'Bài tập sức mạnh toàn thân.',
+    username: 'Coach Minh',
+    avatar: 'https://i.pravatar.cc/150?img=56',
+    left_video: '',
+    right_video: '',
+    is_enrolled: '0',
+    is_requested: '0',
   },
 ];

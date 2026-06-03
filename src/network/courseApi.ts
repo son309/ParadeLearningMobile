@@ -11,6 +11,26 @@ const unwrapResponse = (payload: any) => {
 };
 
 export const courseApi = {
+  // Danh sách GV users (không phụ thuộc vào bài đăng) + trạng thái enrolled/requested
+  getListTeachers: async (params: {
+    token: string;
+    index: string;
+    count: string;
+  }) => {
+    const response = await apiClient.post('/get_list_teachers', params);
+    return unwrapResponse(response.data);
+  },
+
+  // Danh sách giáo viên kèm trạng thái is_enrolled / is_requested của học sinh
+  getListCourses: async (params: {
+    token: string;
+    index: string;
+    count: string;
+  }) => {
+    const response = await apiClient.post('/get_list_courses', params);
+    return unwrapResponse(response.data);
+  },
+
   getRequestedEnrollment: async (params: {
     token: string;
     index: string;

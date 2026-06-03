@@ -7,6 +7,8 @@ import MainTabNavigator from './MainTabNavigator';
 import { useAuthStore } from '../store/authStore';
 import { connectSocket, disconnectSocket } from '../network/socket';
 import { VideoPickerScreen, AIResultScreen } from '../screens/CameraModule';
+import UserProfileScreen from '../screens/Profile/UserProfileScreen';
+import BlockedUsersScreen from '../screens/Menu/BlockedUsersScreen';
 
 const RootStack = createNativeStackNavigator();
 
@@ -22,6 +24,16 @@ function AppNavigator() {
       <RootStack.Screen
         name="AIResultScreen"
         component={AIResultScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
+        name="UserProfile"
+        component={UserProfileScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
+        name="BlockedUsers"
+        component={BlockedUsersScreen}
         options={{ animation: 'slide_from_right' }}
       />
     </RootStack.Navigator>

@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { theme } from '../../constants/theme';
@@ -16,26 +17,36 @@ import { postApi } from '../../network/postApi';
 import { useAuthStore } from '../../store/authStore';
 import type { PostItem } from '../../types/post';
 import PostCard from '../../components/PostCard';
+import Avatar from '../../components/Avatar';
 import { MOCK_SEARCH_RESULTS } from '../../utils/mockData';
 
 const HISTORY_KEY = 'search_history_v1';
 const MAX_HISTORY = 20;
 const PAGE_SIZE = 10;
 
+type UserSearchItem = {
+  id: string;
+  username: string;
+  avatar?: string;
+  role?: string;
+};
+
 const ensureOnline = async () => {
   const state = await NetInfo.fetch();
   if (!state.isConnected) {
-    Alert.alert('No Internet Connection');
+    Alert.alert('Không có kết nối mạng');
     return false;
   }
   return true;
 };
 
 export default function SearchScreen() {
+  const navigation = useNavigation<any>();
   const { token, user } = useAuthStore();
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
-  const [results, setResults] = useState<PostItem[]>([]);
+  const [postResults, setPostResults] = useState<PostItem[]>([]);
+  const [userResults, setUserResults] = useState<UserSearchItem[]>([]);
   const [history, setHistory] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -49,8 +60,7 @@ export default function SearchScreen() {
       const stored = await AsyncStorage.getItem(HISTORY_KEY);
       if (stored) {
         try {
-          const parsed = JSON.parse(stored) as string[];
-          setHistory(parsed);
+          setHistory(JSON.parse(stored) as string[]);
         } catch {
           setHistory([]);
         }
@@ -67,11 +77,12 @@ export default function SearchScreen() {
   const runSearch = useCallback(
     async (term: string, nextPage = 0) => {
       const trimmed = term.trim();
-      if (!trimmed || !token || !user?.id) {
+      if (!trimmed || !token) {
         return;
       }
       if (token === 'mock-token') {
-        setResults(MOCK_SEARCH_RESULTS);
+        setPostResults(MOCK_SEARCH_RESULTS);
+        setUserResults([]);
         setDone(true);
         setLoading(false);
         setLoadingMore(false);
@@ -85,7 +96,8 @@ export default function SearchScreen() {
       if (nextPage === 0) {
         setLoading(true);
         setDone(false);
-        setResults([]);
+        setPostResults([]);
+        setUserResults([]);
       } else {
         setLoadingMore(true);
       }
@@ -94,16 +106,22 @@ export default function SearchScreen() {
         const data = await postApi.searchPosts({
           token,
           keyword: trimmed,
-          user_id: user.id,
+          // Không truyền user_id để tìm kiếm toàn cục (không chỉ bài của mình)
           index: nextPage.toString(),
           count: PAGE_SIZE.toString(),
         });
 
-        const incoming = Array.isArray(data?.posts) ? data.posts : [];
+        const incoming: PostItem[] = Array.isArray(data?.posts) ? data.posts : [];
+
         if (nextPage === 0) {
-          setResults(incoming);
+          setPostResults(incoming);
+          // Users chỉ trả về ở trang đầu
+          setUserResults(Array.isArray(data?.users) ? data.users : []);
         } else {
-          setResults(current => [...current, ...incoming]);
+          setPostResults(current => [
+            ...current,
+            ...incoming.filter(p => !current.find(x => x.post_id === p.post_id)),
+          ]);
         }
         setDone(incoming.length < PAGE_SIZE);
         setPage(nextPage);
@@ -116,16 +134,21 @@ export default function SearchScreen() {
           ].slice(0, MAX_HISTORY);
           await persistHistory(nextHistory);
         }
-      } catch {
+      } catch (err: any) {
+        // NO_DATA bình thường — không phải lỗi
+        if (!err?.message?.includes('No data')) {
+          Alert.alert(err?.message || 'Không thể tìm kiếm');
+        }
         if (nextPage === 0) {
-          setResults([]);
+          setPostResults([]);
+          setUserResults([]);
         }
       } finally {
         setLoading(false);
         setLoadingMore(false);
       }
     },
-    [token, user?.id, history],
+    [token, history],
   );
 
   const submit = () => {
@@ -138,10 +161,7 @@ export default function SearchScreen() {
   };
 
   const loadMore = () => {
-    if (loading || loadingMore || done) {
-      return;
-    }
-    if (!submitted) {
+    if (loading || loadingMore || done || !submitted) {
       return;
     }
     runSearch(submitted, page + 1);
@@ -155,33 +175,72 @@ export default function SearchScreen() {
     await persistHistory(history.filter(item => item !== term));
   };
 
+  const hasResults = postResults.length > 0 || userResults.length > 0;
+
+  // Header của FlatList: section "Mọi người"
+  const ListHeaderUsers = userResults.length > 0 ? (
+    <View style={styles.usersSection}>
+      <Text style={styles.sectionTitle}>Mọi người</Text>
+      {userResults.map(u => (
+        <Pressable
+          key={u.id}
+          style={({ pressed }) => [styles.userRow, pressed && styles.userRowPressed]}
+          onPress={() =>
+            navigation.navigate('UserProfile', {
+              userId: u.id,
+              username: u.username,
+              avatar: u.avatar,
+            })
+          }>
+          <Avatar uri={u.avatar} name={u.username} size={48} />
+          <View style={styles.userInfo}>
+            <Text style={styles.userName}>{u.username}</Text>
+            <Text style={styles.userRole}>
+              {u.role === 'GV' ? 'Giáo viên' : 'Học viên'}
+            </Text>
+          </View>
+          <Text style={styles.userChevron}>›</Text>
+        </Pressable>
+      ))}
+      {postResults.length > 0 && (
+        <View style={styles.sectionDivider}>
+          <Text style={styles.sectionTitle}>Bài viết</Text>
+        </View>
+      )}
+    </View>
+  ) : null;
+
   return (
     <SafeAreaView style={styles.container}>
+      {/* Search bar */}
       <View style={styles.searchHeader}>
         <View style={styles.searchBar}>
-          <Text style={styles.searchIcon}>S</Text>
+          <Text style={styles.searchIconText}>🔍</Text>
           <TextInput
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={submit}
-            placeholder="Posts, hashtags, users..."
+            placeholder="Tìm bài viết, hashtag, người dùng..."
             placeholderTextColor={theme.colors.muted}
             style={styles.input}
             returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
           />
           {query.length > 0 && (
             <Pressable style={styles.clearButton} onPress={() => setQuery('')}>
-              <Text style={styles.clearText}>X</Text>
+              <Text style={styles.clearText}>✕</Text>
             </Pressable>
           )}
         </View>
-        <Pressable onPress={submit} style={styles.searchAction}>
-          <Text style={styles.searchActionText}>Search</Text>
+        <Pressable onPress={submit} style={styles.searchActionBtn}>
+          <Text style={styles.searchActionText}>Tìm</Text>
         </Pressable>
       </View>
 
+      {/* Results */}
       <FlatList
-        data={results}
+        data={postResults}
         keyExtractor={item => item.post_id}
         renderItem={({ item }) => (
           <PostCard post={item} onChange={() => runSearch(submitted, 0)} />
@@ -189,50 +248,63 @@ export default function SearchScreen() {
         contentContainerStyle={styles.list}
         onEndReached={loadMore}
         onEndReachedThreshold={0.6}
+        ListHeaderComponent={ListHeaderUsers}
         ListEmptyComponent={
           !loading && submitted ? (
-            <Text style={styles.emptyText}>Khong tim thay ket qua</Text>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>🔍</Text>
+              <Text style={styles.emptyText}>Không tìm thấy kết quả</Text>
+              <Text style={styles.emptySubtext}>
+                Thử từ khóa khác hoặc tìm theo hashtag #tag
+              </Text>
+            </View>
           ) : null
         }
         ListFooterComponent={
           loadingMore ? (
-            <Text style={styles.footerText}>Dang tai them...</Text>
-          ) : done && results.length > 0 ? (
-            <Text style={styles.footerText}>Da xem het</Text>
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Đang tải thêm...</Text>
+            </View>
+          ) : done && postResults.length > 0 ? (
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>✓ Đã xem hết</Text>
+            </View>
           ) : null
         }
       />
 
+      {/* Lịch sử tìm kiếm */}
       {showHistory && (
         <View style={styles.historyOverlay}>
           <View style={styles.historyCard}>
             <View style={styles.historyHeader}>
-              <Text style={styles.historyTitle}>Recent searches</Text>
+              <Text style={styles.historyTitle}>Tìm kiếm gần đây</Text>
               {history.length > 0 && (
                 <Pressable onPress={clearHistory}>
-                  <Text style={styles.clearAllText}>Clear all</Text>
+                  <Text style={styles.clearAllText}>Xóa tất cả</Text>
                 </Pressable>
               )}
             </View>
             {history.length === 0 ? (
-              <Text style={styles.emptyHistory}>No recent searches</Text>
+              <Text style={styles.emptyHistory}>Chưa có lịch sử tìm kiếm</Text>
             ) : (
               history.map(item => (
-                <View key={item} style={styles.historyItem}>
+                <Pressable
+                  key={item}
+                  style={styles.historyItem}
+                  onPress={() => {
+                    setQuery(item);
+                    setSubmitted(item);
+                    runSearch(item, 0);
+                  }}>
+                  <Text style={styles.historyIcon}>🕐</Text>
+                  <Text style={styles.historyLabel}>{item}</Text>
                   <Pressable
-                    style={styles.historyItemText}
-                    onPress={() => {
-                      setQuery(item);
-                      setSubmitted(item);
-                      runSearch(item, 0);
-                    }}
-                  >
-                    <Text style={styles.historyLabel}>{item}</Text>
+                    style={styles.historyRemoveBtn}
+                    onPress={() => removeHistoryItem(item)}>
+                    <Text style={styles.historyRemove}>✕</Text>
                   </Pressable>
-                  <Pressable onPress={() => removeHistoryItem(item)}>
-                    <Text style={styles.historyRemove}>X</Text>
-                  </Pressable>
-                </View>
+                </Pressable>
               ))
             )}
           </View>
@@ -247,14 +319,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+
+  // Search bar
   searchHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     backgroundColor: theme.colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomWidth: 0.5,
+    borderBottomColor: theme.colors.divider,
     gap: theme.spacing.sm,
   },
   searchBar: {
@@ -262,101 +336,191 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.surface2,
-    borderRadius: 20,
-    paddingHorizontal: theme.spacing.sm,
-    height: 40,
+    borderRadius: 22,
+    paddingHorizontal: theme.spacing.md,
+    height: 44,
+    gap: theme.spacing.sm,
   },
-  searchIcon: {
-    color: theme.colors.muted,
-    fontWeight: '700',
-    marginRight: theme.spacing.xs,
+  searchIconText: {
+    fontSize: 16,
   },
   input: {
     flex: 1,
     color: theme.colors.text,
+    fontSize: theme.font.md,
   },
   clearButton: {
-    height: 24,
     width: 24,
+    height: 24,
     borderRadius: 12,
+    backgroundColor: theme.colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.surface,
   },
   clearText: {
-    color: theme.colors.muted,
+    color: theme.colors.textSecondary,
+    fontSize: 11,
     fontWeight: '700',
   },
-  searchAction: {
+  searchActionBtn: {
     paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
   },
   searchActionText: {
     color: theme.colors.primary,
     fontWeight: '700',
+    fontSize: theme.font.md,
   },
+
+  // List
   list: {
+    paddingBottom: theme.spacing.xl,
+  },
+
+  // Users section
+  usersSection: {
+    backgroundColor: theme.colors.surface,
+    marginBottom: theme.spacing.sm,
+    paddingBottom: theme.spacing.xs,
+  },
+  sectionTitle: {
+    fontSize: theme.font.lg,
+    fontWeight: '800',
+    color: theme.colors.text,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+  },
+  sectionDivider: {
+    borderTopWidth: 8,
+    borderTopColor: theme.colors.background,
+    marginTop: theme.spacing.xs,
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.md,
+  },
+  userRowPressed: {
+    backgroundColor: theme.colors.surface2,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: theme.font.md,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  userRole: {
+    fontSize: theme.font.sm,
+    color: theme.colors.muted,
+    marginTop: 2,
+  },
+  userChevron: {
+    fontSize: 22,
+    color: theme.colors.muted,
+    fontWeight: '300',
+  },
+
+  // Empty state
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.xxl,
+    paddingHorizontal: theme.spacing.xl,
+  },
+  emptyEmoji: {
+    fontSize: 48,
+    marginBottom: theme.spacing.md,
   },
   emptyText: {
-    textAlign: 'center',
+    fontSize: theme.font.lg,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+  },
+  emptySubtext: {
+    fontSize: theme.font.sm,
     color: theme.colors.muted,
-    paddingVertical: theme.spacing.lg,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  // Footer
+  footer: {
+    paddingVertical: theme.spacing.md,
+    alignItems: 'center',
   },
   footerText: {
-    textAlign: 'center',
+    fontSize: theme.font.sm,
     color: theme.colors.muted,
-    paddingVertical: theme.spacing.sm,
   },
+
+  // History overlay
   historyOverlay: {
     position: 'absolute',
-    top: 70,
+    top: 60,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.08)',
-    padding: theme.spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.08)',
   },
   historyCard: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.spacing.sm,
+    borderBottomLeftRadius: theme.radius.md,
+    borderBottomRightRadius: theme.radius.md,
+    paddingBottom: theme.spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
   },
   historyHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.xs,
+    paddingVertical: theme.spacing.md,
   },
   historyTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.muted,
+    fontSize: theme.font.sm,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   clearAllText: {
-    fontSize: 12,
+    fontSize: theme.font.sm,
     fontWeight: '600',
     color: theme.colors.primary,
   },
   emptyHistory: {
     textAlign: 'center',
     color: theme.colors.muted,
-    paddingVertical: theme.spacing.lg,
+    paddingVertical: theme.spacing.xl,
+    fontSize: theme.font.sm,
   },
   historyItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    paddingVertical: 12,
+    gap: theme.spacing.md,
+    borderTopWidth: 0.5,
+    borderTopColor: theme.colors.divider,
   },
-  historyItemText: {
-    flex: 1,
+  historyIcon: {
+    fontSize: 16,
   },
   historyLabel: {
-    fontSize: 14,
+    flex: 1,
+    fontSize: theme.font.md,
     color: theme.colors.text,
+  },
+  historyRemoveBtn: {
+    padding: theme.spacing.xs,
   },
   historyRemove: {
     fontSize: 12,

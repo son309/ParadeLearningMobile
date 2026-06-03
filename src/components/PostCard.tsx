@@ -8,9 +8,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import NetInfo from '@react-native-community/netinfo';
 import Video from 'react-native-video';
 import { postApi } from '../network/postApi';
+import { userApi } from '../network/userApi';
 import { theme } from '../constants/theme';
 import { formatCount } from '../utils/format';
 import { minutesSince, timeAgoVi } from '../utils/timeAgo';
@@ -36,6 +38,7 @@ const ensureOnline = async () => {
 };
 
 export default function PostCard({ post, onChange }: PostCardProps) {
+  const navigation = useNavigation<any>();
   const { token, user } = useAuthStore();
   const [expanded, setExpanded] = useState(false);
   const [liked, setLiked] = useState(post.is_liked === '1');
@@ -93,7 +96,14 @@ export default function PostCard({ post, onChange }: PostCardProps) {
     setLikeCount(prevCount + (prevLiked ? -1 : 1));
 
     try {
-      await postApi.likePost({ token, id: post.post_id });
+      const data = await postApi.likePost({ token, id: post.post_id });
+      // Đồng bộ số like thực tế từ server
+      if (data?.is_liked !== undefined) {
+        setLiked(data.is_liked === '1');
+      }
+      if (data?.like !== undefined) {
+        setLikeCount(Number(data.like));
+      }
     } catch (error) {
       setLiked(prevLiked);
       setLikeCount(prevCount);
@@ -134,8 +144,12 @@ export default function PostCard({ post, onChange }: PostCardProps) {
         count: COMMENT_PAGE_SIZE.toString(),
       });
       setComments(data?.data || []);
-    } catch {
-      Alert.alert('Không thể tải bình luận');
+    } catch (err: any) {
+      // NO_DATA nghĩa là chưa có comment nào — không phải lỗi, chỉ hiện list rỗng
+      if (!err?.message?.includes('No data')) {
+        Alert.alert('Không thể tải bình luận');
+      }
+      setComments([]);
     } finally {
       setLoadingComments(false);
     }
@@ -241,27 +255,70 @@ export default function PostCard({ post, onChange }: PostCardProps) {
     }
   };
 
+  const blockAuthor = async () => {
+    if (!token || !post.author?.id) {
+      return;
+    }
+    const authorName = post.author.username || 'người dùng này';
+    const confirmed = await new Promise<boolean>(resolve => {
+      Alert.alert(
+        `Chặn ${authorName}?`,
+        'Họ sẽ không còn thấy bài viết của bạn và không thể tương tác với bạn.',
+        [
+          { text: 'Hủy', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Chặn', style: 'destructive', onPress: () => resolve(true) },
+        ],
+      );
+    });
+    if (!confirmed) {
+      return;
+    }
+    if (!(await ensureOnline())) {
+      return;
+    }
+    try {
+      await userApi.setBlock({ token, userId: post.author.id, type: '0' });
+      setMenuOpen(false);
+      // Refresh feed — bài của người bị chặn sẽ biến mất
+      onChange();
+    } catch (err: any) {
+      Alert.alert(err?.message || 'Không thể chặn người dùng');
+    }
+  };
+
   return (
     <View style={styles.card}>
       {/* ─── Header ─── */}
       <View style={styles.header}>
-        <View style={styles.avatarWrap}>
-          <Avatar uri={avatarUrl} name={name} size={42} />
-          {isOnline && <View style={styles.onlineDot} />}
-        </View>
-
-        <View style={styles.headerText}>
-          <Text style={styles.name} numberOfLines={1}>
-            {name}
-          </Text>
-          <View style={styles.metaRow}>
-            <Text style={[styles.time, { color: timeColor }]}>
-              {timeAgoVi(post.created)}
-            </Text>
-            <Text style={styles.metaSep}> · </Text>
-            <Text style={styles.metaIcon}>🌐</Text>
+        <Pressable
+          style={styles.authorArea}
+          onPress={() => {
+            if (post.author?.id) {
+              navigation.navigate('UserProfile', {
+                userId: post.author.id,
+                username: post.author.username,
+                avatar: post.author.avatar,
+              });
+            }
+          }}>
+          <View style={styles.avatarWrap}>
+            <Avatar uri={avatarUrl} name={name} size={42} />
+            {isOnline && <View style={styles.onlineDot} />}
           </View>
-        </View>
+
+          <View style={styles.headerText}>
+            <Text style={styles.name} numberOfLines={1}>
+              {name}
+            </Text>
+            <View style={styles.metaRow}>
+              <Text style={[styles.time, { color: timeColor }]}>
+                {timeAgoVi(post.created)}
+              </Text>
+              <Text style={styles.metaSep}> · </Text>
+              <Text style={styles.metaIcon}>🌐</Text>
+            </View>
+          </View>
+        </Pressable>
 
         <Pressable
           style={({ pressed }) => [
@@ -307,10 +364,8 @@ export default function PostCard({ post, onChange }: PostCardProps) {
         <View style={styles.countRow}>
           {likeCount > 0 && (
             <View style={styles.reactionSummary}>
-              <View style={styles.reactionEmojis}>
-                <View style={[styles.reactionBubble, { backgroundColor: theme.colors.primary }]}>
-                  <Text style={styles.reactionBubbleEmoji}>👍</Text>
-                </View>
+              <View style={[styles.reactionBubble, { backgroundColor: theme.colors.primary }]}>
+                <Text style={styles.reactionBubbleEmoji}>👍</Text>
               </View>
               <Text style={styles.countText}>{likeLabel}</Text>
             </View>
@@ -326,13 +381,15 @@ export default function PostCard({ post, onChange }: PostCardProps) {
 
       {/* ─── Actions ─── */}
       <View style={styles.actions}>
+        {/* Like button — BUG FIX: text turns blue when liked */}
         <Pressable
           style={({ pressed }) => [
             styles.actionButton,
+            liked && styles.actionButtonLiked,
             pressed && styles.actionButtonPressed,
           ]}
           onPress={toggleLike}>
-          <Text style={styles.actionEmoji}>{liked ? '👍' : '👍'}</Text>
+          <Text style={styles.actionEmoji}>👍</Text>
           <Text
             style={[styles.actionText, liked && styles.actionTextActive]}>
             Thích
@@ -457,6 +514,21 @@ export default function PostCard({ post, onChange }: PostCardProps) {
               </Pressable>
             )}
 
+            {/* Chặn người dùng — chỉ hiện cho bài của người khác */}
+            {!canEdit && post.author?.id && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.menuItem,
+                  pressed && styles.menuItemPressed,
+                ]}
+                onPress={blockAuthor}>
+                <Text style={styles.menuItemEmoji}>🚫</Text>
+                <Text style={[styles.menuText, styles.menuDangerText]}>
+                  Chặn {post.author.username || 'người dùng này'}
+                </Text>
+              </Pressable>
+            )}
+
             <Pressable
               style={({ pressed }) => [
                 styles.menuItem,
@@ -502,17 +574,31 @@ export default function PostCard({ post, onChange }: PostCardProps) {
 }
 
 const styles = StyleSheet.create({
+  // ─── Card ──────────────────────────────────────────────────────────────────
   card: {
-    backgroundColor: theme.colors.surface,
-    marginBottom: theme.spacing.sm,
-    // Facebook posts have no border radius on mobile — full-width cards
+    backgroundColor: '#FFFFFF',
+    marginBottom: 8,
+    // Facebook feed cards: full-width, no border radius, subtle bottom shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+    elevation: 1,
   },
+
+  // ─── Header ────────────────────────────────────────────────────────────────
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.md,
-    paddingBottom: theme.spacing.sm,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  authorArea: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   avatarWrap: {
     position: 'relative',
@@ -524,34 +610,36 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: theme.colors.online,
+    backgroundColor: '#31A24C',
     borderWidth: 2,
-    borderColor: theme.colors.surface,
+    borderColor: '#FFFFFF',
   },
   headerText: {
     flex: 1,
-    marginLeft: theme.spacing.sm,
   },
   name: {
     fontWeight: '700',
-    fontSize: theme.font.md,
-    color: theme.colors.text,
-    marginBottom: 2,
+    fontSize: 15,
+    color: '#050505',
+    marginBottom: 1,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   time: {
-    fontSize: theme.font.xs,
+    fontSize: 11,
+    color: '#65676B',
   },
   metaSep: {
-    fontSize: theme.font.xs,
-    color: theme.colors.muted,
+    fontSize: 11,
+    color: '#65676B',
   },
   metaIcon: {
     fontSize: 10,
+    color: '#65676B',
   },
+  // 3-dot menu: 36px touch target, gray icon
   menuButton: {
     height: 36,
     width: 36,
@@ -560,29 +648,34 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   menuButtonPressed: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: '#F0F2F5',
   },
   menuIcon: {
-    fontSize: 16,
-    color: theme.colors.textSecondary,
+    fontSize: 14,
+    color: '#65676B',
     fontWeight: '700',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
   },
+
+  // ─── Content ───────────────────────────────────────────────────────────────
   content: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.sm,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
   },
   text: {
-    fontSize: theme.font.md,
+    fontSize: 15,
     lineHeight: 22,
-    color: theme.colors.text,
+    color: '#050505',
+    fontWeight: '400',
   },
   seeMore: {
     marginTop: 4,
-    fontSize: theme.font.sm,
+    fontSize: 15,
     fontWeight: '600',
-    color: theme.colors.textSecondary,
+    color: '#65676B',
   },
+
+  // ─── Media ─────────────────────────────────────────────────────────────────
   videoWrap: {
     backgroundColor: '#000',
   },
@@ -590,137 +683,153 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 240,
   },
+
+  // ─── Reaction summary row ──────────────────────────────────────────────────
   countRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   reactionSummary: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  reactionEmojis: {
-    flexDirection: 'row',
+    gap: 6,
   },
   reactionBubble: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: theme.colors.surface,
+    borderColor: '#FFFFFF',
   },
   reactionBubbleEmoji: {
-    fontSize: 10,
+    fontSize: 11,
   },
   countText: {
-    fontSize: theme.font.xs,
-    color: theme.colors.textSecondary,
-    marginLeft: 4,
+    fontSize: 12,
+    color: '#65676B',
+    fontWeight: '400',
   },
+
+  // ─── Divider ───────────────────────────────────────────────────────────────
   divider: {
     height: 0.5,
-    backgroundColor: theme.colors.divider,
-    marginHorizontal: theme.spacing.lg,
+    backgroundColor: '#E4E6EB',
+    marginHorizontal: 16,
   },
+
+  // ─── Action buttons ────────────────────────────────────────────────────────
+  // 3 equal-width buttons, 48px height, centered emoji + text
   actions: {
     flexDirection: 'row',
-    paddingHorizontal: theme.spacing.xs,
+    paddingHorizontal: 4,
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
-    paddingVertical: theme.spacing.sm,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    borderRadius: theme.radius.sm,
+    gap: 6,
+    borderRadius: 6,
+  },
+  // Subtle blue-tinted background when liked (instead of coloring emoji)
+  actionButtonLiked: {
+    backgroundColor: '#E7F3FF',
   },
   actionButtonPressed: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: '#F0F2F5',
   },
   actionEmoji: {
-    fontSize: 16,
-    opacity: 0.8,
+    fontSize: 18,
   },
   actionText: {
-    fontSize: theme.font.sm,
+    fontSize: 13,
     fontWeight: '600',
-    color: theme.colors.textSecondary,
+    color: '#65676B',
   },
+  // Blue text when Like is active
   actionTextActive: {
-    color: theme.colors.like,
+    color: '#1877F2',
+    fontWeight: '700',
   },
+
+  // ─── Comments section ──────────────────────────────────────────────────────
   comments: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.md,
-    backgroundColor: theme.colors.surface,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
   },
   loadingText: {
-    fontSize: theme.font.sm,
-    color: theme.colors.muted,
-    paddingVertical: theme.spacing.sm,
+    fontSize: 13,
+    color: '#65676B',
+    paddingVertical: 8,
+    textAlign: 'center',
   },
   commentList: {
-    paddingTop: theme.spacing.sm,
-    gap: theme.spacing.sm,
+    paddingTop: 8,
+    gap: 8,
   },
   commentItem: {
     flexDirection: 'row',
-    gap: theme.spacing.sm,
+    gap: 8,
     alignItems: 'flex-start',
   },
+  // Light gray pill-shaped bubble
   commentBubble: {
     flex: 1,
-    backgroundColor: theme.colors.surface2,
-    borderRadius: theme.radius.lg,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
+    backgroundColor: '#F0F2F5',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   commentAuthor: {
-    fontSize: theme.font.xs,
+    fontSize: 12,
     fontWeight: '700',
-    color: theme.colors.text,
+    color: '#050505',
     marginBottom: 2,
   },
   commentText: {
-    fontSize: theme.font.sm,
-    color: theme.colors.text,
+    fontSize: 14,
+    color: '#050505',
     lineHeight: 18,
+    fontWeight: '400',
   },
+  // Comment input row
   commentInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm,
-    paddingTop: theme.spacing.md,
+    gap: 8,
+    paddingTop: 10,
   },
   commentInputWrap: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.surface2,
-    borderRadius: theme.radius.full,
-    paddingHorizontal: theme.spacing.md,
+    backgroundColor: '#F0F2F5',
+    borderRadius: 9999,
+    paddingHorizontal: 14,
     minHeight: 38,
   },
   commentInput: {
     flex: 1,
-    fontSize: theme.font.sm,
-    color: theme.colors.text,
-    paddingVertical: theme.spacing.sm,
+    fontSize: 13,
+    color: '#050505',
+    paddingVertical: 8,
   },
+  // Blue send button (only visible when text entered)
   sendButton: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: '#1877F2',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: theme.spacing.xs,
+    marginLeft: 4,
   },
   sendText: {
     fontSize: 14,
@@ -728,48 +837,59 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   lockedText: {
-    fontSize: theme.font.sm,
-    color: theme.colors.muted,
-    paddingVertical: theme.spacing.sm,
+    fontSize: 13,
+    color: '#65676B',
+    paddingVertical: 8,
     textAlign: 'center',
   },
+
+  // ─── Modal overlay ─────────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: theme.colors.overlay,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
+
+  // ─── Options menu sheet ────────────────────────────────────────────────────
   menuSheet: {
-    backgroundColor: theme.colors.surface,
-    borderTopLeftRadius: theme.radius.xl,
-    borderTopRightRadius: theme.radius.xl,
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl,
-    paddingTop: theme.spacing.sm,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+    paddingTop: 8,
+    // Shadow on sheet
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 8,
   },
   menuHandle: {
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: theme.colors.border,
+    backgroundColor: '#CED0D4',
     alignSelf: 'center',
-    marginBottom: theme.spacing.md,
+    marginBottom: 12,
   },
   menuTitle: {
-    fontSize: theme.font.md,
+    fontSize: 17,
     fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
+    color: '#050505',
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: theme.spacing.md,
-    gap: theme.spacing.md,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 14,
+    gap: 12,
+    borderRadius: 8,
+    paddingHorizontal: 8,
   },
   menuItemPressed: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: '#F0F2F5',
   },
   menuItemEmoji: {
     fontSize: 20,
@@ -777,67 +897,75 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   menuText: {
-    fontSize: theme.font.md,
-    color: theme.colors.text,
+    fontSize: 15,
+    color: '#050505',
     fontWeight: '500',
   },
   menuDangerText: {
-    color: theme.colors.danger,
+    color: '#FA3E3E',
   },
+
+  // ─── Edit sheet ────────────────────────────────────────────────────────────
   editSheet: {
-    backgroundColor: theme.colors.surface,
-    borderTopLeftRadius: theme.radius.xl,
-    borderTopRightRadius: theme.radius.xl,
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl,
-    paddingTop: theme.spacing.sm,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+    paddingTop: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 8,
   },
   editTitle: {
-    fontSize: theme.font.lg,
+    fontSize: 17,
     fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
+    color: '#050505',
+    marginBottom: 12,
     textAlign: 'center',
   },
   editInput: {
     minHeight: 120,
-    borderRadius: theme.radius.md,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.colors.divider,
-    padding: theme.spacing.md,
-    color: theme.colors.text,
+    borderColor: '#E4E6EB',
+    padding: 12,
+    color: '#050505',
     textAlignVertical: 'top',
-    fontSize: theme.font.md,
-    backgroundColor: theme.colors.surface2,
+    fontSize: 15,
+    backgroundColor: '#F0F2F5',
+    lineHeight: 22,
   },
   editActions: {
     flexDirection: 'row',
-    gap: theme.spacing.md,
-    marginTop: theme.spacing.lg,
+    gap: 10,
+    marginTop: 16,
   },
   editCancelButton: {
     flex: 1,
     height: 46,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.surface2,
+    borderRadius: 9999,
+    backgroundColor: '#F0F2F5',
     alignItems: 'center',
     justifyContent: 'center',
   },
   editCancelText: {
-    fontSize: theme.font.md,
+    fontSize: 15,
     fontWeight: '600',
-    color: theme.colors.textSecondary,
+    color: '#65676B',
   },
   editSaveButton: {
     flex: 1,
     height: 46,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.primary,
+    borderRadius: 9999,
+    backgroundColor: '#1877F2',
     alignItems: 'center',
     justifyContent: 'center',
   },
   editSaveText: {
-    fontSize: theme.font.md,
+    fontSize: 15,
     fontWeight: '700',
     color: '#fff',
   },

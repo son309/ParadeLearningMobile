@@ -39,4 +39,20 @@ export const userApi = {
     const response = await apiClient.post('/set_block', params);
     return unwrapResponse(response.data);
   },
+
+  // GET /users — trả về tất cả users, lọc GV ở client
+  getAllUsers: async () => {
+    const response = await apiClient.get('/users');
+    return unwrapResponse(response.data);
+  },
+
+  // Danh sách người dùng đã chặn
+  getListBlocks: async (params: {
+    token: string;
+    index?: string;
+    count?: string;
+  }) => {
+    const response = await apiClient.post('/get_list_blocks', params);
+    return unwrapResponse(response.data);
+  },
 };

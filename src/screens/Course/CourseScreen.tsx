@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -7,12 +8,11 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme } from '../../constants/theme';
 import { courseApi } from '../../network/courseApi';
 import { userApi } from '../../network/userApi';
@@ -21,31 +21,32 @@ import type {
   CourseItem,
   EnrollmentRequestItem,
   StudentItem,
+  TeacherListItem,
 } from '../../types/course';
 import Avatar from '../../components/Avatar';
 import {
   MOCK_COURSES,
   MOCK_REQUESTS,
   MOCK_STUDENTS,
+  MOCK_TEACHER_LIST,
 } from '../../utils/mockData';
+
+const pendingKey = (userId: string) => `pending_teacher_ids_${userId}`;
 
 const PAGE_SIZE = 10;
 
 const ensureOnline = async () => {
   const state = await NetInfo.fetch();
   if (!state.isConnected) {
-    Alert.alert('No Internet Connection');
+    Alert.alert('Không có kết nối mạng');
     return false;
   }
   return true;
 };
 
-const pendingKey = (userId: string) => `pending_requests_${userId}`;
-
 export default function CourseScreen() {
-  const { token, user } = useAuthStore();
-  const role = user?.role;
-  const isTeacher = role === 'GV';
+  const { user } = useAuthStore();
+  const isTeacher = user?.role === 'GV';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -53,6 +54,8 @@ export default function CourseScreen() {
     </SafeAreaView>
   );
 }
+
+// ─── TEACHER VIEW ─────────────────────────────────────────────────────────────
 
 function TeacherView() {
   const navigation = useNavigation<any>();
@@ -75,10 +78,10 @@ function TeacherView() {
     if (!(await ensureOnline())) {
       return;
     }
-
     setLoading(true);
     try {
-      const [requestData, studentData] = await Promise.all([
+      // allSettled để NO_DATA từ một API không làm hỏng API còn lại
+      const [requestResult, studentResult] = await Promise.allSettled([
         courseApi.getRequestedEnrollment({
           token,
           index: '0',
@@ -91,15 +94,26 @@ function TeacherView() {
         }),
       ]);
 
-      const mappedRequests = Array.isArray(requestData?.data)
-        ? requestData.data.map((item: any) => item.request)
-        : [];
-      setRequests(mappedRequests);
-      setStudents(
-        Array.isArray(studentData?.students) ? studentData.students : [],
-      );
+      if (requestResult.status === 'fulfilled') {
+        const mappedRequests = Array.isArray(requestResult.value?.data)
+          ? requestResult.value.data.map((item: any) => item.request)
+          : [];
+        setRequests(mappedRequests);
+      } else {
+        setRequests([]);
+      }
+
+      if (studentResult.status === 'fulfilled') {
+        setStudents(
+          Array.isArray(studentResult.value?.students)
+            ? studentResult.value.students
+            : [],
+        );
+      } else {
+        setStudents([]);
+      }
     } catch (error: any) {
-      Alert.alert(error?.message || 'Khong the tai danh sach');
+      Alert.alert(error?.message || 'Không thể tải danh sách');
     } finally {
       setLoading(false);
     }
@@ -119,23 +133,20 @@ function TeacherView() {
     }
     const confirmed = await new Promise<boolean>(resolve => {
       Alert.alert(
-        accept ? 'Xac nhan duyet?' : 'Xac nhan tu choi?',
-        'Ban chac chan muon tiep tuc?',
+        accept ? 'Xác nhận duyệt?' : 'Xác nhận từ chối?',
+        'Bạn chắc chắn muốn tiếp tục?',
         [
-          { text: 'Huy', style: 'cancel', onPress: () => resolve(false) },
-          { text: 'Dong y', onPress: () => resolve(true) },
+          { text: 'Hủy', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Đồng ý', onPress: () => resolve(true) },
         ],
       );
     });
-
     if (!confirmed) {
       return;
     }
-
     if (!(await ensureOnline())) {
       return;
     }
-
     try {
       await courseApi.setApproveEnrollment({
         token,
@@ -144,7 +155,7 @@ function TeacherView() {
       });
       load();
     } catch (error: any) {
-      Alert.alert(error?.message || 'Khong the cap nhat yeu cau');
+      Alert.alert(error?.message || 'Không thể cập nhật yêu cầu');
     }
   };
 
@@ -163,40 +174,43 @@ function TeacherView() {
       await userApi.setBlock({ token, userId: studentId, type: '0' });
       setMenuTarget(null);
     } catch (error: any) {
-      Alert.alert(error?.message || 'Khong the chan nguoi dung');
+      Alert.alert(error?.message || 'Không thể chặn người dùng');
     }
   };
 
   return (
     <>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Course Requests</Text>
+        <Text style={styles.headerTitle}>Lớp học của tôi</Text>
         <Pressable
           onPress={() => navigation.navigate('Search')}
-          style={styles.headerAction}
-        >
-          <Text style={styles.headerActionText}>Search</Text>
+          style={styles.headerAction}>
+          <Text style={styles.headerActionText}>Tìm kiếm</Text>
         </Pressable>
       </View>
+
+      {/* Tabs — underline style, 48px height */}
       <View style={styles.tabs}>
         <Pressable
           onPress={() => setTab('requests')}
-          style={[styles.tabButton, tab === 'requests' && styles.tabActive]}
-        >
+          style={[styles.tabButton, tab === 'requests' && styles.tabActive]}>
           <Text
-            style={[styles.tabText, tab === 'requests' && styles.tabTextActive]}
-          >
-            Requests
+            style={[
+              styles.tabText,
+              tab === 'requests' && styles.tabTextActive,
+            ]}>
+            Xin vào lớp{requests.length > 0 ? ` (${requests.length})` : ''}
           </Text>
         </Pressable>
         <Pressable
           onPress={() => setTab('students')}
-          style={[styles.tabButton, tab === 'students' && styles.tabActive]}
-        >
+          style={[styles.tabButton, tab === 'students' && styles.tabActive]}>
           <Text
-            style={[styles.tabText, tab === 'students' && styles.tabTextActive]}
-          >
-            Students
+            style={[
+              styles.tabText,
+              tab === 'students' && styles.tabTextActive,
+            ]}>
+            Học viên{students.length > 0 ? ` (${students.length})` : ''}
           </Text>
         </Pressable>
       </View>
@@ -210,42 +224,56 @@ function TeacherView() {
           onRefresh={load}
           ListEmptyComponent={
             !loading ? (
-              <Text style={styles.emptyText}>Khong co yeu cau</Text>
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>📭</Text>
+                <Text style={styles.emptyText}>Không có yêu cầu mới</Text>
+                <Text style={styles.emptySubtext}>Kéo xuống để làm mới</Text>
+              </View>
             ) : null
           }
           renderItem={({ item }) => (
+            // Facebook "Friend Requests" style card
             <View style={styles.requestCard}>
-              <Avatar uri={item.avatar} name={item.user_name} size={52} />
-              <View style={styles.requestInfo}>
-                <Text style={styles.requestName}>{item.user_name}</Text>
-                <Text style={styles.requestSub}>Muon tham gia lop</Text>
-                <View style={styles.requestActions}>
-                  <Pressable
-                    style={styles.primaryButton}
-                    onPress={() => approveRequest(item.id, true)}
-                  >
-                    <Text style={styles.primaryButtonText}>Accept</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.secondaryButton}
-                    onPress={() => approveRequest(item.id, false)}
-                  >
-                    <Text style={styles.secondaryButtonText}>Delete</Text>
-                  </Pressable>
-                </View>
-              </View>
+              {/* Top row: avatar + name (pressable) */}
               <Pressable
-                style={styles.menuButton}
+                style={styles.userArea}
                 onPress={() =>
-                  setMenuTarget({
-                    id: item.id,
-                    name: item.user_name,
+                  navigation.navigate('UserProfile', {
+                    userId: item.id,
+                    username: item.user_name,
                     avatar: item.avatar,
                   })
-                }
-              >
-                <Text style={styles.menuText}>...</Text>
+                }>
+                <Avatar uri={item.avatar} name={item.user_name} size={52} />
+                <View style={styles.requestInfo}>
+                  <Text style={styles.requestName}>{item.user_name}</Text>
+                  <Text style={styles.requestSub}>Muốn tham gia lớp học</Text>
+                </View>
               </Pressable>
+              {/* Bottom row: 2 full-width action buttons + 3-dot */}
+              <View style={styles.requestActions}>
+                <Pressable
+                  style={styles.approveButton}
+                  onPress={() => approveRequest(item.id, true)}>
+                  <Text style={styles.approveButtonText}>Duyệt</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.rejectButton}
+                  onPress={() => approveRequest(item.id, false)}>
+                  <Text style={styles.rejectButtonText}>Từ chối</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.menuButton}
+                  onPress={() =>
+                    setMenuTarget({
+                      id: item.id,
+                      name: item.user_name,
+                      avatar: item.avatar,
+                    })
+                  }>
+                  <Text style={styles.menuDots}>•••</Text>
+                </Pressable>
+              </View>
             </View>
           )}
         />
@@ -258,18 +286,31 @@ function TeacherView() {
           onRefresh={load}
           ListEmptyComponent={
             !loading ? (
-              <Text style={styles.emptyText}>Chua co hoc vien</Text>
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>👥</Text>
+                <Text style={styles.emptyText}>Chưa có học viên nào</Text>
+                <Text style={styles.emptySubtext}>Danh sách học viên sẽ hiện ở đây</Text>
+              </View>
             ) : null
           }
           renderItem={({ item }) => (
             <View style={styles.studentRow}>
-              <Avatar uri={item.avatar} name={item.name} size={44} />
-              <Text style={styles.studentName}>{item.name}</Text>
+              <Pressable
+                style={styles.userArea}
+                onPress={() =>
+                  navigation.navigate('UserProfile', {
+                    userId: item.id,
+                    username: item.name,
+                    avatar: item.avatar,
+                  })
+                }>
+                <Avatar uri={item.avatar} name={item.name} size={44} />
+                <Text style={styles.studentName}>{item.name}</Text>
+              </Pressable>
               <Pressable
                 style={styles.menuButton}
-                onPress={() => setMenuTarget(item)}
-              >
-                <Text style={styles.menuText}>...</Text>
+                onPress={() => setMenuTarget(item)}>
+                <Text style={styles.menuDots}>•••</Text>
               </Pressable>
             </View>
           )}
@@ -279,21 +320,18 @@ function TeacherView() {
       <Modal transparent visible={!!menuTarget} animationType="fade">
         <Pressable
           style={styles.modalOverlay}
-          onPress={() => setMenuTarget(null)}
-        >
+          onPress={() => setMenuTarget(null)}>
           <View style={styles.menuCard}>
             <Text style={styles.menuTitle}>{menuTarget?.name}</Text>
             <Pressable
               style={styles.menuItem}
-              onPress={() => menuTarget && blockStudent(menuTarget.id)}
-            >
-              <Text style={styles.menuItemText}>Block</Text>
+              onPress={() => menuTarget && blockStudent(menuTarget.id)}>
+              <Text style={styles.menuItemDanger}>Chặn</Text>
             </Pressable>
             <Pressable
               style={styles.menuItem}
-              onPress={() => setMenuTarget(null)}
-            >
-              <Text style={styles.menuItemCancel}>Cancel</Text>
+              onPress={() => setMenuTarget(null)}>
+              <Text style={styles.menuItemCancel}>Hủy</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -302,13 +340,98 @@ function TeacherView() {
   );
 }
 
+// ─── STUDENT VIEW ─────────────────────────────────────────────────────────────
+
 function StudentView() {
   const navigation = useNavigation<any>();
   const { token, user } = useAuthStore();
-  const [teacherId, setTeacherId] = useState('');
-  const [pending, setPending] = useState<string[]>([]);
-  const [courses, setCourses] = useState<CourseItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState<'teachers' | 'courses'>('teachers');
+
+  // Danh sách GV lấy từ GET /users, lọc role=GV ở client
+  const [teachers, setTeachers] = useState<TeacherListItem[]>([]);
+  // Lớp đã tham gia — từ /get_list_courses_of_student
+  const [enrolledCourses, setEnrolledCourses] = useState<CourseItem[]>([]);
+  // IDs đã gửi request — lưu AsyncStorage vì server không có API query phía học sinh
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  // IDs đã được duyệt
+  const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set());
+
+  const [loadingTeachers, setLoadingTeachers] = useState(false);
+  const [loadingEnrolled, setLoadingEnrolled] = useState(false);
+  const [requesting, setRequesting] = useState<Set<string>>(new Set());
+
+  const loadTeachers = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+    if (token === 'mock-token') {
+      setTeachers(MOCK_TEACHER_LIST);
+      return;
+    }
+    if (!(await ensureOnline())) {
+      return;
+    }
+    setLoadingTeachers(true);
+    try {
+      // GET /users trả về tất cả users — lọc GV ở client
+      const data: any[] = await userApi.getAllUsers();
+      const list: TeacherListItem[] = (Array.isArray(data) ? data : [])
+        .filter((u: any) => u.role === 'GV' && u.status === 'ACTIVE')
+        .map((u: any) => ({
+          teacher_id: u.id,
+          username: u.username ?? 'Giáo viên',
+          avatar: u.avatar ?? '',
+          is_enrolled: '0',
+          is_requested: '0',
+        }));
+      setTeachers(list);
+    } catch {
+      setTeachers([]);
+    } finally {
+      setLoadingTeachers(false);
+    }
+  }, [token]);
+
+  const loadEnrolledCourses = useCallback(async () => {
+    if (!token || !user?.id) {
+      return;
+    }
+    if (token === 'mock-token') {
+      setEnrolledCourses(MOCK_COURSES);
+      setEnrolledIds(new Set(MOCK_COURSES.map(c => c.id)));
+      return;
+    }
+    if (!(await ensureOnline())) {
+      return;
+    }
+    setLoadingEnrolled(true);
+    try {
+      const data = await courseApi.getListCoursesOfStudent({
+        token,
+        user_id: user.id,
+        index: '0',
+        count: '50',
+      });
+      const courses: CourseItem[] = Array.isArray(data?.courses)
+        ? data.courses
+        : [];
+      setEnrolledCourses(courses);
+      const ids = new Set(courses.map(c => c.id));
+      setEnrolledIds(ids);
+      // Xóa khỏi pending những ID đã được duyệt
+      if (user?.id) {
+        setPendingIds(prev => {
+          const next = new Set([...prev].filter(id => !ids.has(id)));
+          AsyncStorage.setItem(pendingKey(user.id!), JSON.stringify([...next]));
+          return next;
+        });
+      }
+    } catch {
+      setEnrolledCourses([]);
+    } finally {
+      setLoadingEnrolled(false);
+    }
+  }, [token, user?.id]);
 
   const loadPending = useCallback(async () => {
     if (!user?.id) {
@@ -317,427 +440,569 @@ function StudentView() {
     const stored = await AsyncStorage.getItem(pendingKey(user.id));
     if (stored) {
       try {
-        setPending(JSON.parse(stored) as string[]);
+        setPendingIds(new Set(JSON.parse(stored) as string[]));
       } catch {
-        setPending([]);
+        setPendingIds(new Set());
       }
     }
   }, [user?.id]);
-
-  const loadCourses = useCallback(async () => {
-    if (!token || !user?.id) {
-      return;
-    }
-    if (token === 'mock-token') {
-      setCourses(MOCK_COURSES);
-      return;
-    }
-    if (!(await ensureOnline())) {
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await courseApi.getListCoursesOfStudent({
-        token,
-        user_id: user.id,
-        index: '0',
-        count: PAGE_SIZE.toString(),
-      });
-      const nextCourses = Array.isArray(data?.courses) ? data.courses : [];
-      setCourses(nextCourses);
-
-      const approvedIds = new Set(
-        nextCourses.map((course: CourseItem) => course.id),
-      );
-      const nextPending = pending.filter(id => !approvedIds.has(id));
-      if (nextPending.length !== pending.length) {
-        setPending(nextPending);
-        await AsyncStorage.setItem(
-          pendingKey(user.id),
-          JSON.stringify(nextPending),
-        );
-      }
-    } catch (error: any) {
-      Alert.alert(error?.message || 'Khong the tai danh sach khoa hoc');
-    } finally {
-      setLoading(false);
-    }
-  }, [token, user?.id, pending]);
 
   useEffect(() => {
     loadPending();
   }, [loadPending]);
 
   useEffect(() => {
-    loadCourses();
-  }, [loadCourses]);
+    loadTeachers();
+  }, [loadTeachers]);
 
-  const submitRequest = async () => {
+  useEffect(() => {
+    loadEnrolledCourses();
+  }, [loadEnrolledCourses]);
+
+  const requestJoin = async (teacherId: string) => {
     if (!token || !user?.id) {
       return;
     }
-    if (!teacherId.trim()) {
-      return;
-    }
     if (token === 'mock-token') {
-      const nextPending = Array.from(new Set([teacherId.trim(), ...pending]));
-      setPending(nextPending);
-      if (user?.id) {
-        await AsyncStorage.setItem(
-          pendingKey(user.id),
-          JSON.stringify(nextPending),
-        );
-      }
-      setTeacherId('');
+      setPendingIds(prev => new Set([...prev, teacherId]));
       return;
     }
     if (!(await ensureOnline())) {
       return;
     }
+    setRequesting(prev => new Set([...prev, teacherId]));
     try {
       await courseApi.setRequestCourse({
         token,
-        course_id: teacherId.trim(),
+        course_id: teacherId,
         user_id: user.id,
       });
-
-      const nextPending = Array.from(new Set([teacherId.trim(), ...pending]));
-      setPending(nextPending);
+      // Lưu pending vào AsyncStorage
+      const next = new Set([...pendingIds, teacherId]);
+      setPendingIds(next);
       await AsyncStorage.setItem(
         pendingKey(user.id),
-        JSON.stringify(nextPending),
+        JSON.stringify([...next]),
       );
-      setTeacherId('');
-      loadCourses();
-    } catch (error: any) {
-      Alert.alert(error?.message || 'Khong the gui yeu cau');
+    } catch (err: any) {
+      Alert.alert(err?.message || 'Không thể gửi yêu cầu');
+    } finally {
+      setRequesting(prev => {
+        const n = new Set(prev);
+        n.delete(teacherId);
+        return n;
+      });
     }
   };
 
-  const approvedIds = useMemo(() => new Set(courses.map(c => c.id)), [courses]);
+  const refresh = () => {
+    loadTeachers();
+    loadEnrolledCourses();
+  };
+
+  const enrolledCount = enrolledCourses.length;
 
   return (
     <>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Requests</Text>
+        <Text style={styles.headerTitle}>Khóa học</Text>
+      </View>
+
+      {/* Tabs — underline style, 48px height */}
+      <View style={styles.tabs}>
         <Pressable
-          onPress={() => navigation.navigate('Search')}
-          style={styles.headerAction}
-        >
-          <Text style={styles.headerActionText}>Search</Text>
-        </Pressable>
-      </View>
-
-      {/* Nút nộp bài tập video cho AI chấm điểm */}
-      <Pressable
-        style={styles.submitVideoCard}
-        onPress={() => navigation.navigate('VideoPickerScreen')}>
-        <View style={styles.submitVideoIconWrap}>
-          <Text style={styles.submitVideoIcon}>🤖</Text>
-        </View>
-        <View style={styles.submitVideoInfo}>
-          <Text style={styles.submitVideoTitle}>Nộp bài tập video</Text>
-          <Text style={styles.submitVideoDesc}>
-            Quay 2 góc · AI chấm điểm kỹ thuật tự động
+          onPress={() => setTab('teachers')}
+          style={[styles.tabButton, tab === 'teachers' && styles.tabActive]}>
+          <Text
+            style={[
+              styles.tabText,
+              tab === 'teachers' && styles.tabTextActive,
+            ]}>
+            Giáo viên
           </Text>
-        </View>
-        <Text style={styles.submitVideoArrow}>›</Text>
-      </Pressable>
-
-      <View style={styles.studentCard}>
-        <Text style={styles.studentTitle}>Send request</Text>
-        <TextInput
-          value={teacherId}
-          onChangeText={setTeacherId}
-          placeholder="Teacher ID"
-          placeholderTextColor={theme.colors.muted}
-          style={styles.input}
-        />
-        <Pressable style={styles.primaryButton} onPress={submitRequest}>
-          <Text style={styles.primaryButtonText}>Request</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setTab('courses')}
+          style={[styles.tabButton, tab === 'courses' && styles.tabActive]}>
+          <Text
+            style={[
+              styles.tabText,
+              tab === 'courses' && styles.tabTextActive,
+            ]}>
+            Lớp của tôi{enrolledCount > 0 ? ` (${enrolledCount})` : ''}
+          </Text>
         </Pressable>
       </View>
-      <FlatList
-        data={pending}
-        keyExtractor={item => item}
-        contentContainerStyle={styles.list}
-        refreshing={loading}
-        onRefresh={loadCourses}
-        ListEmptyComponent={
-          !loading ? (
-            <Text style={styles.emptyText}>Khong co yeu cau</Text>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>{item}</Text>
-            <Text style={styles.statusValue}>
-              {approvedIds.has(item) ? 'Approved' : 'Pending'}
-            </Text>
-          </View>
-        )}
-        ListHeaderComponent={
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Approval status</Text>
-          </View>
-        }
-      />
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Enrolled courses</Text>
-      </View>
-      <FlatList
-        data={courses}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          !loading ? (
-            <Text style={styles.emptyText}>Chua co khoa hoc</Text>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <View style={styles.studentRow}>
-            <Avatar uri={item.avatar} name={item.name} size={44} />
-            <Text style={styles.studentName}>{item.name}</Text>
-          </View>
-        )}
-      />
+
+      {tab === 'teachers' ? (
+        <FlatList
+          data={teachers}
+          keyExtractor={item => item.teacher_id}
+          contentContainerStyle={styles.list}
+          refreshing={loadingTeachers}
+          onRefresh={refresh}
+          ListEmptyComponent={
+            !loadingTeachers ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>🏫</Text>
+                <Text style={styles.emptyText}>Chưa có giáo viên nào</Text>
+                <Text style={styles.emptySubtext}>Kéo xuống để làm mới</Text>
+              </View>
+            ) : null
+          }
+          renderItem={({ item }) => {
+            const isEnrolled = enrolledIds.has(item.teacher_id);
+            const isPending = pendingIds.has(item.teacher_id);
+            const isRequesting = requesting.has(item.teacher_id);
+
+            // Facebook "People You May Know" style card
+            return (
+              <View style={styles.teacherCard}>
+                <Pressable
+                  style={styles.userArea}
+                  onPress={() =>
+                    navigation.navigate('UserProfile', {
+                      userId: item.teacher_id,
+                      username: item.username,
+                      avatar: item.avatar,
+                    })
+                  }>
+                  <Avatar uri={item.avatar} name={item.username} size={64} />
+                  <View style={styles.teacherInfo}>
+                    <Text style={styles.teacherName}>{item.username}</Text>
+                    <Text style={styles.teacherRoleLabel}>Giáo viên</Text>
+                  </View>
+                </Pressable>
+
+                {isEnrolled ? (
+                  <View style={[styles.statusBadge, styles.enrolledBadge]}>
+                    <Text style={[styles.statusText, styles.enrolledText]}>
+                      Đã tham gia
+                    </Text>
+                  </View>
+                ) : isPending ? (
+                  <View style={[styles.statusBadge, styles.pendingBadge]}>
+                    <Text style={[styles.statusText, styles.pendingText]}>
+                      Đang chờ
+                    </Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={[
+                      styles.joinButton,
+                      isRequesting && styles.joinButtonLoading,
+                    ]}
+                    onPress={() => requestJoin(item.teacher_id)}
+                    disabled={isRequesting}>
+                    {isRequesting ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.joinButtonText}>Xin vào lớp</Text>
+                    )}
+                  </Pressable>
+                )}
+              </View>
+            );
+          }}
+        />
+      ) : (
+        <FlatList
+          data={enrolledCourses}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.list}
+          refreshing={loadingEnrolled}
+          onRefresh={loadEnrolledCourses}
+          ListHeaderComponent={
+            <Pressable
+              style={styles.submitVideoCard}
+              onPress={() => navigation.navigate('VideoPickerScreen')}>
+              <View style={styles.submitVideoIconWrap}>
+                <Text style={styles.submitVideoIcon}>🤖</Text>
+              </View>
+              <View style={styles.submitVideoInfo}>
+                <Text style={styles.submitVideoTitle}>Nộp bài tập video</Text>
+                <Text style={styles.submitVideoDesc}>
+                  Quay 2 góc · AI chấm điểm kỹ thuật tự động
+                </Text>
+              </View>
+              <Text style={styles.submitVideoArrow}>›</Text>
+            </Pressable>
+          }
+          ListEmptyComponent={
+            !loadingEnrolled ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>📚</Text>
+                <Text style={styles.emptyText}>Chưa tham gia lớp học nào</Text>
+                <Text style={styles.emptySubtext}>
+                  Chuyển sang tab Giáo viên để xin vào lớp
+                </Text>
+              </View>
+            ) : null
+          }
+          renderItem={({ item }) => (
+            <View style={styles.teacherCard}>
+              <Pressable
+                style={styles.userArea}
+                onPress={() =>
+                  navigation.navigate('UserProfile', {
+                    userId: item.id,
+                    username: item.name,
+                    avatar: item.avatar,
+                  })
+                }>
+                <Avatar uri={item.avatar} name={item.name} size={64} />
+                <View style={styles.teacherInfo}>
+                  <Text style={styles.teacherName}>{item.name}</Text>
+                  <Text style={styles.teacherRoleLabel}>Giáo viên của bạn</Text>
+                </View>
+              </Pressable>
+              <View style={[styles.statusBadge, styles.enrolledBadge]}>
+                <Text style={[styles.statusText, styles.enrolledText]}>
+                  Đã tham gia
+                </Text>
+              </View>
+            </View>
+          )}
+        />
+      )}
     </>
   );
 }
 
+// ─── STYLES ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#F0F2F5',
   },
+
+  // ─── Header ────────────────────────────────────────────────────────────────
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: theme.colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E4E6EB',
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '700',
-    color: theme.colors.text,
+    color: '#050505',
   },
   headerAction: {
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.surface2,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 9999,
+    backgroundColor: '#E7F3FF',
   },
   headerActionText: {
-    color: theme.colors.primary,
+    color: '#1877F2',
     fontWeight: '600',
+    fontSize: 14,
   },
+
+  // ─── Tabs — underline style, 48px height ───────────────────────────────────
   tabs: {
     flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E4E6EB',
   },
   tabButton: {
     flex: 1,
-    paddingVertical: theme.spacing.sm,
+    height: 48,
     alignItems: 'center',
+    justifyContent: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
   tabActive: {
-    borderBottomColor: theme.colors.primary,
+    borderBottomColor: '#1877F2',
   },
   tabText: {
-    color: theme.colors.muted,
+    color: '#65676B',
     fontWeight: '600',
+    fontSize: 14,
   },
   tabTextActive: {
-    color: theme.colors.primary,
+    color: '#1877F2',
+    fontWeight: '700',
   },
+
+  // ─── List ──────────────────────────────────────────────────────────────────
   list: {
-    paddingBottom: theme.spacing.lg,
+    paddingBottom: 32,
+    paddingTop: 4,
+  },
+
+  // ─── Empty state ───────────────────────────────────────────────────────────
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  emptyEmoji: {
+    fontSize: 48,
+    marginBottom: 12,
   },
   emptyText: {
+    color: '#050505',
+    fontWeight: '700',
+    fontSize: 16,
     textAlign: 'center',
-    color: theme.colors.muted,
-    paddingVertical: theme.spacing.lg,
   },
-  requestCard: {
+  emptySubtext: {
+    color: '#65676B',
+    fontSize: 14,
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  // ─── Teacher card — Facebook "People You May Know" style ──────────────────
+  teacherCard: {
     flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
-    marginHorizontal: theme.spacing.lg,
-    marginTop: theme.spacing.sm,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+    // Subtle shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  teacherInfo: {
+    flex: 1,
+  },
+  teacherName: {
+    fontWeight: '700',
+    color: '#050505',
+    fontSize: 15,
+  },
+  teacherRoleLabel: {
+    color: '#65676B',
+    fontSize: 13,
+    marginTop: 2,
+  },
+
+  // ─── Join button — pill-shaped Facebook blue ───────────────────────────────
+  joinButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#1877F2',
+    borderRadius: 9999,
+    minWidth: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  joinButtonLoading: {
+    backgroundColor: '#CED0D4',
+  },
+  joinButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
+  // ─── Status badges — pill-shaped ──────────────────────────────────────────
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 9999,
+  },
+  statusText: {
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  // "Đã tham gia": green pill
+  enrolledBadge: {
+    backgroundColor: '#E6F4EA',
+  },
+  enrolledText: {
+    color: '#1E8E3E',
+  },
+  // "Đang chờ": orange pill
+  pendingBadge: {
+    backgroundColor: '#FEF3E2',
+  },
+  pendingText: {
+    color: '#E37400',
+  },
+
+  // ─── Shared user pressable area (avatar + name) ────────────────────────────
+  userArea: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+
+  // ─── Request card — Facebook "Friend Requests" style ──────────────────────
+  requestCard: {
+    flexDirection: 'column',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
   },
   requestInfo: {
     flex: 1,
   },
   requestName: {
     fontWeight: '700',
-    color: theme.colors.text,
+    color: '#050505',
+    fontSize: 15,
   },
   requestSub: {
-    color: theme.colors.muted,
-    fontSize: 12,
+    color: '#65676B',
+    fontSize: 13,
+    marginTop: 2,
   },
+  // Bottom action row: 2 full-width buttons + 3-dot
   requestActions: {
     flexDirection: 'row',
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.sm,
+    gap: 8,
+    alignItems: 'center',
   },
-  primaryButton: {
+  approveButton: {
     flex: 1,
-    height: 40,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.radius.sm,
+    height: 36,
+    backgroundColor: '#1877F2',
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButtonText: {
-    color: theme.colors.surface,
+  approveButtonText: {
+    color: '#fff',
     fontWeight: '700',
+    fontSize: 14,
   },
-  secondaryButton: {
+  rejectButton: {
     flex: 1,
-    height: 40,
-    backgroundColor: theme.colors.surface2,
-    borderRadius: theme.radius.sm,
+    height: 36,
+    backgroundColor: '#E4E6EB',
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  secondaryButtonText: {
-    color: theme.colors.text,
+  rejectButtonText: {
+    color: '#050505',
     fontWeight: '600',
+    fontSize: 14,
   },
-  menuButton: {
-    height: 32,
-    width: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 16,
-    backgroundColor: theme.colors.surface2,
-  },
-  menuText: {
-    color: theme.colors.muted,
-    fontWeight: '700',
-  },
+
+  // ─── Student row (teacher view – students tab) ─────────────────────────────
   studentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
-    marginHorizontal: theme.spacing.lg,
-    marginTop: theme.spacing.sm,
-    padding: theme.spacing.md,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    gap: theme.spacing.sm,
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 12,
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
   },
   studentName: {
     flex: 1,
     fontWeight: '600',
-    color: theme.colors.text,
+    color: '#050505',
+    fontSize: 15,
   },
+
+  // ─── Three-dot menu button ─────────────────────────────────────────────────
+  menuButton: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: '#F0F2F5',
+  },
+  menuDots: {
+    color: '#65676B',
+    fontWeight: '700',
+    fontSize: 12,
+    letterSpacing: 1,
+  },
+
+  // ─── Modal ─────────────────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: theme.colors.overlay,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: theme.spacing.lg,
+    padding: 16,
   },
   menuCard: {
     width: '100%',
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   menuTitle: {
     fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
+    color: '#050505',
+    marginBottom: 8,
+    fontSize: 15,
   },
   menuItem: {
-    paddingVertical: theme.spacing.sm,
+    paddingVertical: 12,
+    borderTopWidth: 0.5,
+    borderTopColor: '#E4E6EB',
   },
-  menuItemText: {
-    color: theme.colors.primary,
+  menuItemDanger: {
+    color: '#FA3E3E',
     fontWeight: '700',
+    fontSize: 15,
   },
   menuItemCancel: {
-    color: theme.colors.muted,
+    color: '#65676B',
     fontWeight: '600',
-  },
-  studentCard: {
-    margin: theme.spacing.lg,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    gap: theme.spacing.sm,
-  },
-  studentTitle: {
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  input: {
-    backgroundColor: theme.colors.surface2,
-    borderRadius: theme.radius.sm,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    color: theme.colors.text,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: theme.spacing.lg,
-    marginTop: theme.spacing.sm,
-    padding: theme.spacing.md,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  statusLabel: {
-    color: theme.colors.text,
-    fontWeight: '600',
-  },
-  statusValue: {
-    color: theme.colors.primary,
-    fontWeight: '700',
-  },
-  sectionHeader: {
-    marginTop: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-  },
-  sectionTitle: {
-    fontWeight: '700',
-    color: theme.colors.text,
+    fontSize: 15,
   },
 
-  // Submit Video Card
+  // ─── Submit video card ─────────────────────────────────────────────────────
   submitVideoCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: theme.spacing.lg,
-    marginTop: theme.spacing.md,
-    marginBottom: theme.spacing.xs,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
-    ...theme.shadow.card,
+    marginHorizontal: 12,
+    marginTop: 12,
+    marginBottom: 4,
+    backgroundColor: '#1877F2',
+    borderRadius: 12,
+    padding: 14,
+    gap: 12,
+    shadowColor: '#1877F2',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
   },
   submitVideoIconWrap: {
     width: 44,
@@ -756,11 +1021,11 @@ const styles = StyleSheet.create({
   submitVideoTitle: {
     fontWeight: '800',
     color: '#fff',
-    fontSize: theme.font.md,
+    fontSize: 15,
   },
   submitVideoDesc: {
     color: 'rgba(255,255,255,0.8)',
-    fontSize: theme.font.xs,
+    fontSize: 12,
     marginTop: 2,
   },
   submitVideoArrow: {
