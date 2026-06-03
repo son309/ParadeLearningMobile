@@ -17,13 +17,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuthStore } from '../../store/authStore';
-import { mediaApi } from '../../network/mediaApi';
+import { postApi } from '../../network/postApi';
 import { theme } from '../../constants/theme';
-import type { VideoSlot, VideoUploadResult } from '../../types/media';
+import type { VideoSlot } from '../../types/media';
 
 // Lazy import react-native-image-picker
 let launchImageLibrary: any;
@@ -55,10 +56,25 @@ const SLOT_CONFIG: { key: SlotKey; label: string; icon: string; desc: string }[]
     },
   ];
 
+type RouteParams = {
+  // Chế độ GV tạo bài tập
+  isTeacherCreating?: boolean;
+  // Chế độ HV nộp bài
+  exerciseId?: string;
+  courseId?: string;
+  exerciseTitle?: string;
+};
+
 export default function VideoPickerScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { token } = useAuthStore();
 
+  const { isTeacherCreating, exerciseId, courseId, exerciseTitle } =
+    (route.params as RouteParams) || {};
+
+  // GV: mô tả bài tập (tuỳ chọn)
+  const [description, setDescription] = useState('');
   const [slots, setSlots] = useState<Partial<Record<SlotKey, VideoSlot>>>({});
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -161,9 +177,9 @@ export default function VideoPickerScreen() {
     [pickVideo],
   );
 
-  // Upload & analysis AI
+  // Đăng bài (GV tạo bài tập) hoặc Nộp bài (HV)
 
-  const handleAnalyze = useCallback(async () => {
+  const handleSubmit = useCallback(async () => {
     if (!token) {
       Alert.alert('Lỗi', 'Vui lòng đăng nhập lại.');
       return;
@@ -177,32 +193,52 @@ export default function VideoPickerScreen() {
       return;
     }
 
+    // HV phải có exerciseId và courseId
+    if (!isTeacherCreating && (!exerciseId || !courseId)) {
+      Alert.alert(
+        'Chưa chọn bài tập',
+        'Hãy bấm "Nộp bài" từ một bài đăng của giáo viên trên trang chủ.',
+      );
+      return;
+    }
+
     setUploading(true);
     setProgress(0);
 
     try {
-      const result: VideoUploadResult = await mediaApi.uploadDualVideo(
-        frontSlot.uri,
-        backSlot.uri,
+      await postApi.addPost({
         token,
-        pct => setProgress(pct),
-      );
-
-      // Chuyển sang màn hình kết quả AI
-      navigation.navigate('AIResultScreen', {
-        result,
-        slots: { front: frontSlot, back: backSlot },
+        leftVideoUri: frontSlot.uri,
+        rightVideoUri: backSlot.uri,
+        described: description.trim() || undefined,
+        exerciseId: isTeacherCreating ? undefined : exerciseId,
+        courseId: isTeacherCreating ? undefined : courseId,
+        onProgress: pct => setProgress(pct),
       });
+
+      if (isTeacherCreating) {
+        Alert.alert(
+          '✅ Đăng bài tập thành công',
+          'Học viên trong lớp sẽ nhận được thông báo.',
+          [{ text: 'OK', onPress: () => navigation.popToTop() }],
+        );
+      } else {
+        Alert.alert(
+          '✅ Nộp bài thành công',
+          'Bài tập của bạn đã được gửi cho giáo viên. Hãy chờ kết quả chấm điểm.',
+          [{ text: 'OK', onPress: () => navigation.popToTop() }],
+        );
+      }
     } catch (error: any) {
       Alert.alert(
-        'Upload thất bại',
+        isTeacherCreating ? 'Đăng bài thất bại' : 'Nộp bài thất bại',
         error?.message || 'Không thể kết nối server. Thử lại sau.',
       );
     } finally {
       setUploading(false);
       setProgress(0);
     }
-  }, [token, slots, navigation]);
+  }, [token, slots, isTeacherCreating, exerciseId, courseId, description, navigation]);
 
   const bothSelected = !!slots.front && !!slots.back;
 
@@ -220,22 +256,50 @@ export default function VideoPickerScreen() {
             <Text style={styles.backIcon}>‹</Text>
           </Pressable>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Nộp bài tập video</Text>
-            <Text style={styles.headerSub}>AI sẽ chấm điểm kỹ thuật của bạn</Text>
+            <Text style={styles.headerTitle}>
+              {isTeacherCreating ? 'Tạo bài tập mới' : 'Nộp bài tập video'}
+            </Text>
+            <Text style={styles.headerSub} numberOfLines={1}>
+              {isTeacherCreating
+                ? 'Quay 2 góc mẫu để học viên luyện tập theo'
+                : exerciseTitle
+                ? `Bài: ${exerciseTitle}`
+                : 'Chọn video 2 góc rồi nộp cho giáo viên'}
+            </Text>
           </View>
         </View>
 
         {/* Instruction Banner */}
         <View style={styles.banner}>
-          <Text style={styles.bannerIcon}>🤖</Text>
+          <Text style={styles.bannerIcon}>{isTeacherCreating ? '📝' : '🤖'}</Text>
           <View style={styles.bannerText}>
-            <Text style={styles.bannerTitle}>Hướng dẫn quay video</Text>
+            <Text style={styles.bannerTitle}>
+              {isTeacherCreating ? 'Video bài tập mẫu' : 'Hướng dẫn quay video'}
+            </Text>
             <Text style={styles.bannerDesc}>
-              Quay 2 góc để AI phân tích chính xác hơn.{'\n'}
-              Mỗi video tối đa 2 phút, chất lượng cao.
+              {isTeacherCreating
+                ? 'Quay 2 góc thực hiện động tác mẫu.\nHọc viên sẽ nộp lại theo đúng bài này.'
+                : 'Quay 2 góc để giáo viên chấm điểm chính xác hơn.\nMỗi video tối đa 2 phút, chất lượng cao.'}
             </Text>
           </View>
         </View>
+
+        {/* Mô tả bài tập — chỉ hiện cho GV */}
+        {isTeacherCreating && (
+          <View style={styles.descCard}>
+            <Text style={styles.descLabel}>Mô tả bài tập (tuỳ chọn)</Text>
+            <TextInput
+              value={description}
+              onChangeText={setDescription}
+              placeholder="VD: Bài tập squat — chú ý giữ lưng thẳng, gối không vượt mũi chân..."
+              placeholderTextColor={theme.colors.muted}
+              multiline
+              style={styles.descInput}
+              maxLength={500}
+            />
+            <Text style={styles.descCount}>{description.length}/500</Text>
+          </View>
+        )}
 
         {/* Video Slots */}
         {SLOT_CONFIG.map(slot => {
@@ -332,27 +396,27 @@ export default function VideoPickerScreen() {
           </View>
         )}
 
-        {/* Analyze Button */}
+        {/* Submit Button */}
         <Pressable
           style={[
             styles.analyzeBtn,
             (!bothSelected || uploading) && styles.analyzeBtnDisabled,
           ]}
-          onPress={handleAnalyze}
+          onPress={handleSubmit}
           disabled={!bothSelected || uploading}>
           {uploading ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
             <>
-              <Text style={styles.analyzeBtnIcon}>🤖</Text>
-              <Text style={styles.analyzeBtnText}>Phân tích AI</Text>
+              <Text style={styles.analyzeBtnIcon}>📤</Text>
+              <Text style={styles.analyzeBtnText}>Nộp bài cho giáo viên</Text>
             </>
           )}
         </Pressable>
 
         {!bothSelected && !uploading && (
           <Text style={styles.hintText}>
-            ⚠️ Cần chọn đủ cả 2 video trước khi phân tích
+            ⚠️ Cần chọn đủ cả 2 video trước khi nộp bài
           </Text>
         )}
       </ScrollView>
@@ -644,5 +708,41 @@ const styles = StyleSheet.create({
     fontSize: theme.font.xs,
     marginTop: theme.spacing.sm,
     paddingHorizontal: theme.spacing.lg,
+  },
+
+  // Description card (GV)
+  descCard: {
+    marginHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadow.card,
+  },
+  descLabel: {
+    fontSize: theme.font.sm,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+  },
+  descInput: {
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.radius.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    color: theme.colors.text,
+    fontSize: theme.font.sm,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  descCount: {
+    textAlign: 'right',
+    fontSize: theme.font.xs,
+    color: theme.colors.muted,
+    marginTop: 4,
   },
 });

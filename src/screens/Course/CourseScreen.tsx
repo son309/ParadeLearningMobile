@@ -183,9 +183,11 @@ function TeacherView() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Lớp học của tôi</Text>
         <Pressable
-          onPress={() => navigation.navigate('Search')}
+          onPress={() =>
+            navigation.navigate('VideoPickerScreen', { isTeacherCreating: true })
+          }
           style={styles.headerAction}>
-          <Text style={styles.headerActionText}>Tìm kiếm</Text>
+          <Text style={styles.headerActionText}>+ Tạo bài tập</Text>
         </Pressable>
       </View>
 
@@ -214,6 +216,24 @@ function TeacherView() {
           </Text>
         </Pressable>
       </View>
+
+      {/* Card tạo bài tập — nổi bật để GV dễ thấy */}
+      <Pressable
+        style={styles.createExerciseCard}
+        onPress={() =>
+          navigation.navigate('VideoPickerScreen', { isTeacherCreating: true })
+        }>
+        <View style={styles.createExerciseIconWrap}>
+          <Text style={styles.createExerciseIcon}>📹</Text>
+        </View>
+        <View style={styles.createExerciseInfo}>
+          <Text style={styles.createExerciseTitle}>Tạo bài tập mới</Text>
+          <Text style={styles.createExerciseDesc}>
+            Quay 2 góc video mẫu · Học viên nộp lại · Bạn chấm điểm
+          </Text>
+        </View>
+        <Text style={styles.createExerciseArrow}>›</Text>
+      </Pressable>
 
       {tab === 'requests' ? (
         <FlatList
@@ -1029,6 +1049,53 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   submitVideoArrow: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '300',
+  },
+
+  // ─── Teacher create exercise card ──────────────────────────────────────────
+  createExerciseCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 4,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 12,
+    padding: 14,
+    gap: 12,
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  createExerciseIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createExerciseIcon: {
+    fontSize: 22,
+  },
+  createExerciseInfo: {
+    flex: 1,
+  },
+  createExerciseTitle: {
+    fontWeight: '800',
+    color: '#fff',
+    fontSize: 15,
+  },
+  createExerciseDesc: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  createExerciseArrow: {
     color: '#fff',
     fontSize: 24,
     fontWeight: '300',

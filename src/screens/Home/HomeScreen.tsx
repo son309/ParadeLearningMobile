@@ -159,7 +159,21 @@ const storyStyles = StyleSheet.create({
   },
 });
 
-function CreatePostBar({ user }: { user: any }) {
+function CreatePostBar({
+  user,
+  navigation,
+}: {
+  user: any;
+  navigation: any;
+}) {
+  const isTeacher = user?.role === 'GV';
+
+  const handleCreatePost = () => {
+    if (isTeacher) {
+      navigation.navigate('VideoPickerScreen', { isTeacherCreating: true });
+    }
+  };
+
   return (
     <View style={createStyles.container}>
       <View style={createStyles.row}>
@@ -168,31 +182,48 @@ function CreatePostBar({ user }: { user: any }) {
           style={({ pressed }) => [
             createStyles.inputFake,
             pressed && createStyles.inputFakePressed,
-          ]}>
+          ]}
+          onPress={handleCreatePost}>
           <Text style={createStyles.inputText}>
-            {user?.username
+            {isTeacher
+              ? 'Đăng bài tập video mới...'
+              : user?.username
               ? `${user.username.split(' ')[0]} ơi, bạn đang nghĩ gì thế?`
               : 'Bạn đang nghĩ gì thế?'}
           </Text>
         </Pressable>
       </View>
-      <View style={createStyles.divider} />
-      <View style={createStyles.actions}>
-        <Pressable style={createStyles.actionBtn}>
-          <Text style={createStyles.actionEmoji}>🔴</Text>
-          <Text style={createStyles.actionText}>Video trực tiếp</Text>
+
+      {/* GV: nút nổi bật tạo bài tập */}
+      {isTeacher ? (
+        <Pressable
+          style={createStyles.teacherCreateBtn}
+          onPress={handleCreatePost}>
+          <Text style={createStyles.teacherCreateIcon}>📹</Text>
+          <Text style={createStyles.teacherCreateText}>Tạo bài tập video cho học viên</Text>
+          <Text style={createStyles.teacherCreateArrow}>›</Text>
         </Pressable>
-        <View style={createStyles.actionDivider} />
-        <Pressable style={createStyles.actionBtn}>
-          <Text style={createStyles.actionEmoji}>🖼️</Text>
-          <Text style={createStyles.actionText}>Ảnh/Video</Text>
-        </Pressable>
-        <View style={createStyles.actionDivider} />
-        <Pressable style={createStyles.actionBtn}>
-          <Text style={createStyles.actionEmoji}>😊</Text>
-          <Text style={createStyles.actionText}>Cảm xúc</Text>
-        </Pressable>
-      </View>
+      ) : (
+        <>
+          <View style={createStyles.divider} />
+          <View style={createStyles.actions}>
+            <Pressable style={createStyles.actionBtn}>
+              <Text style={createStyles.actionEmoji}>🔴</Text>
+              <Text style={createStyles.actionText}>Video trực tiếp</Text>
+            </Pressable>
+            <View style={createStyles.actionDivider} />
+            <Pressable style={createStyles.actionBtn}>
+              <Text style={createStyles.actionEmoji}>🖼️</Text>
+              <Text style={createStyles.actionText}>Ảnh/Video</Text>
+            </Pressable>
+            <View style={createStyles.actionDivider} />
+            <Pressable style={createStyles.actionBtn}>
+              <Text style={createStyles.actionEmoji}>😊</Text>
+              <Text style={createStyles.actionText}>Cảm xúc</Text>
+            </Pressable>
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -259,6 +290,32 @@ const createStyles = StyleSheet.create({
     fontSize: theme.font.xs,
     fontWeight: '600',
     color: theme.colors.textSecondary,
+  },
+  // Teacher create post button
+  teacherCreateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.radius.md,
+    gap: theme.spacing.sm,
+  },
+  teacherCreateIcon: {
+    fontSize: 20,
+  },
+  teacherCreateText: {
+    flex: 1,
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: theme.font.sm,
+  },
+  teacherCreateArrow: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 22,
+    fontWeight: '300',
   },
 });
 
@@ -372,7 +429,7 @@ export default function HomeScreen() {
   const ListHeader = (
     <View>
       <StoriesBar user={user} />
-      <CreatePostBar user={user} />
+      <CreatePostBar user={user} navigation={navigation} />
     </View>
   );
 

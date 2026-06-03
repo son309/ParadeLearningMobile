@@ -334,6 +334,20 @@ export default function ProfileScreen() {
                 <Text style={styles.primaryBtnText}>✏️ Chỉnh sửa</Text>
               </LinearGradient>
             </Pressable>
+            {user?.role === 'GV' && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.secondaryBtn,
+                  pressed && styles.secondaryBtnPressed,
+                ]}
+                onPress={() =>
+                  navigation.navigate('VideoPickerScreen', {
+                    isTeacherCreating: true,
+                  })
+                }>
+                <Text style={styles.secondaryBtnText}>📹 Đăng video</Text>
+              </Pressable>
+            )}
             <Pressable
               style={({ pressed }) => [
                 styles.secondaryBtn,

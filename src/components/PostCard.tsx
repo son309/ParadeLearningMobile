@@ -51,6 +51,10 @@ export default function PostCard({ post, onChange }: PostCardProps) {
   const [loadingComments, setLoadingComments] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(post.described || '');
+  // Chấm điểm — chỉ dùng khi GV xem bài nộp của HV
+  const [scoringOpen, setScoringOpen] = useState(false);
+  const [scoreInput, setScoreInput] = useState('');
+  const [mistakesInput, setMistakesInput] = useState('');
 
   const isLong = (post.described || '').length > MAX_CHARS;
   const visibleText =
@@ -71,6 +75,13 @@ export default function PostCard({ post, onChange }: PostCardProps) {
 
   const hasMedia = post.video && post.video.length > 0;
   const likeLabel = formatCount(likeCount);
+
+  // HV xem bài của GV → có thể nộp bài
+  const isStudentViewingExercise =
+    user?.role === 'HV' && post.author?.role === 'GV';
+  // GV xem bài nộp của HV → có thể chấm điểm
+  const isTeacherViewingSubmission =
+    user?.role === 'GV' && !!(post.exercise_id && post.exercise_id !== '');
   const commentLabel = formatCount(commentCount);
 
   const videoItems = useMemo(() => post.video || [], [post.video]);
@@ -80,16 +91,11 @@ export default function PostCard({ post, onChange }: PostCardProps) {
       Alert.alert('Vui lòng đăng nhập lại');
       return;
     }
-    if (token === 'mock-token') {
-      const nextLiked = !liked;
-      setLiked(nextLiked);
-      setLikeCount(current => current + (nextLiked ? 1 : -1));
-      return;
-    }
     if (!(await ensureOnline())) {
       return;
     }
 
+    // Optimistic update
     const prevLiked = liked;
     const prevCount = likeCount;
     setLiked(!prevLiked);
@@ -97,14 +103,15 @@ export default function PostCard({ post, onChange }: PostCardProps) {
 
     try {
       const data = await postApi.likePost({ token, id: post.post_id });
-      // Đồng bộ số like thực tế từ server
+      // Đồng bộ với số like thực từ server
       if (data?.is_liked !== undefined) {
         setLiked(data.is_liked === '1');
       }
       if (data?.like !== undefined) {
         setLikeCount(Number(data.like));
       }
-    } catch (error) {
+    } catch {
+      // Rollback nếu lỗi
       setLiked(prevLiked);
       setLikeCount(prevCount);
       Alert.alert('Không thể cập nhật like');
@@ -114,21 +121,11 @@ export default function PostCard({ post, onChange }: PostCardProps) {
   const toggleComments = async () => {
     const next = !commentsOpen;
     setCommentsOpen(next);
-    if (!next || comments.length > 0) {
+    if (!next) {
       return;
     }
     if (!token) {
       Alert.alert('Vui lòng đăng nhập lại');
-      return;
-    }
-    if (token === 'mock-token') {
-      setComments([
-        {
-          id: 'mock-comment-1',
-          comment: 'Bài tập rất hữu ích! 👍',
-          poster: { id: 'mock-user-2', name: 'Học viên demo' },
-        },
-      ]);
       return;
     }
     if (!(await ensureOnline())) {
@@ -143,9 +140,9 @@ export default function PostCard({ post, onChange }: PostCardProps) {
         index: '0',
         count: COMMENT_PAGE_SIZE.toString(),
       });
-      setComments(data?.data || []);
+      setComments(Array.isArray(data?.data) ? data.data : []);
     } catch (err: any) {
-      // NO_DATA nghĩa là chưa có comment nào — không phải lỗi, chỉ hiện list rỗng
+      // NO_DATA = chưa có bình luận nào — hiện list rỗng, không alert lỗi
       if (!err?.message?.includes('No data')) {
         Alert.alert('Không thể tải bình luận');
       }
@@ -156,27 +153,12 @@ export default function PostCard({ post, onChange }: PostCardProps) {
   };
 
   const submitComment = async () => {
-    if (!commentText.trim()) {
+    const text = commentText.trim();
+    if (!text) {
       return;
     }
     if (!token) {
       Alert.alert('Vui lòng đăng nhập lại');
-      return;
-    }
-    if (token === 'mock-token') {
-      setComments(current => [
-        {
-          id: `mock-${Date.now()}`,
-          comment: commentText.trim(),
-          poster: {
-            id: user?.id || 'mock-user',
-            name: user?.username || 'Bạn',
-          },
-        },
-        ...current,
-      ]);
-      setCommentText('');
-      setCommentCount(current => current + 1);
       return;
     }
     if (!(await ensureOnline())) {
@@ -187,15 +169,16 @@ export default function PostCard({ post, onChange }: PostCardProps) {
       const data = await postApi.setComment({
         token,
         id: post.post_id,
-        comment: commentText.trim(),
+        comment: text,
         index: '0',
         count: COMMENT_PAGE_SIZE.toString(),
       });
       setCommentText('');
-      setComments(data?.data || []);
+      // Server trả lại toàn bộ danh sách comment mới nhất
+      setComments(Array.isArray(data?.data) ? data.data : []);
       setCommentCount(current => current + 1);
-    } catch {
-      Alert.alert('Không thể gửi bình luận');
+    } catch (err: any) {
+      Alert.alert(err?.message || 'Không thể gửi bình luận');
     }
   };
 
@@ -206,18 +189,14 @@ export default function PostCard({ post, onChange }: PostCardProps) {
         text: 'Xóa',
         style: 'destructive',
         onPress: async () => {
-          if (token === 'mock-token') {
-            onChange();
-            return;
-          }
           if (!(await ensureOnline())) {
             return;
           }
           try {
             await postApi.deletePost(post.post_id);
             onChange();
-          } catch {
-            Alert.alert('Không thể xóa bài viết');
+          } catch (err: any) {
+            Alert.alert(err?.message || 'Không thể xóa bài viết');
           }
         },
       },
@@ -231,11 +210,6 @@ export default function PostCard({ post, onChange }: PostCardProps) {
     }
     if (!editText.trim()) {
       Alert.alert('Nội dung không được để trống');
-      return;
-    }
-    if (token === 'mock-token') {
-      setEditing(false);
-      onChange();
       return;
     }
     if (!(await ensureOnline())) {
@@ -283,6 +257,37 @@ export default function PostCard({ post, onChange }: PostCardProps) {
       onChange();
     } catch (err: any) {
       Alert.alert(err?.message || 'Không thể chặn người dùng');
+    }
+  };
+
+  const submitScore = async () => {
+    if (!token) {
+      return;
+    }
+    const scoreNum = parseInt(scoreInput.trim(), 10);
+    if (!scoreInput.trim() || isNaN(scoreNum) || scoreNum < 0 || scoreNum > 100) {
+      Alert.alert('Điểm không hợp lệ', 'Vui lòng nhập điểm từ 0 đến 100');
+      return;
+    }
+    if (!(await ensureOnline())) {
+      return;
+    }
+    try {
+      await postApi.setComment({
+        token,
+        id: post.post_id,
+        score: scoreInput.trim(),
+        detail_mistakes: mistakesInput.trim() || undefined,
+        index: '0',
+        count: '10',
+      });
+      setScoringOpen(false);
+      setScoreInput('');
+      setMistakesInput('');
+      Alert.alert('✅ Đã chấm điểm', `Điểm: ${scoreInput}/100`);
+      onChange();
+    } catch (err: any) {
+      Alert.alert(err?.message || 'Không thể gửi điểm');
     }
   };
 
@@ -416,6 +421,34 @@ export default function PostCard({ post, onChange }: PostCardProps) {
         </Pressable>
       </View>
 
+      {/* ─── Nộp bài (HV xem bài GV) ─── */}
+      {isStudentViewingExercise && (
+        <Pressable
+          style={styles.submitBanner}
+          onPress={() =>
+            navigation.navigate('VideoPickerScreen', {
+              exerciseId: post.post_id,
+              courseId: post.author?.id,
+              exerciseTitle: (post.described || '').slice(0, 60),
+            })
+          }>
+          <Text style={styles.submitBannerIcon}>📤</Text>
+          <Text style={styles.submitBannerText}>Nộp bài tập video cho bài này</Text>
+          <Text style={styles.submitBannerArrow}>›</Text>
+        </Pressable>
+      )}
+
+      {/* ─── Chấm điểm (GV xem bài nộp HV) ─── */}
+      {isTeacherViewingSubmission && (
+        <Pressable
+          style={styles.scoreBanner}
+          onPress={() => setScoringOpen(true)}>
+          <Text style={styles.scoreBannerIcon}>⭐</Text>
+          <Text style={styles.scoreBannerText}>Chấm điểm bài nộp này</Text>
+          <Text style={styles.scoreBannerArrow}>›</Text>
+        </Pressable>
+      )}
+
       {/* ─── Comments Section ─── */}
       {commentsOpen && (
         <View style={styles.comments}>
@@ -423,22 +456,40 @@ export default function PostCard({ post, onChange }: PostCardProps) {
 
           {loadingComments ? (
             <Text style={styles.loadingText}>Đang tải bình luận...</Text>
+          ) : comments.length === 0 ? (
+            <Text style={styles.emptyComments}>Chưa có bình luận nào. Hãy là người đầu tiên!</Text>
           ) : (
-            // Dùng View thay ScrollView để tránh lỗi VirtualizedList lồng nhau
-            // (PostCard được render bên trong FlatList ở HomeScreen/ProfileScreen)
             <View style={styles.commentList}>
               {comments.map(comment => (
                 <View key={comment.id} style={styles.commentItem}>
-                  <Avatar
-                    uri={comment.poster?.avatar}
-                    name={comment.poster?.name}
-                    size={32}
-                  />
+                  <Pressable
+                    onPress={() => {
+                      if (comment.poster?.id) {
+                        navigation.navigate('UserProfile', {
+                          userId: comment.poster.id,
+                          username: comment.poster.name,
+                          avatar: comment.poster.avatar,
+                        });
+                      }
+                    }}>
+                    <Avatar
+                      uri={comment.poster?.avatar}
+                      name={comment.poster?.name}
+                      size={32}
+                    />
+                  </Pressable>
                   <View style={styles.commentBubble}>
                     <Text style={styles.commentAuthor}>
                       {comment.poster?.name || 'Người dùng'}
                     </Text>
-                    <Text style={styles.commentText}>{comment.comment}</Text>
+                    {comment.comment ? (
+                      <Text style={styles.commentText}>{comment.comment}</Text>
+                    ) : null}
+                    {comment.created ? (
+                      <Text style={styles.commentTime}>
+                        {timeAgoVi(comment.created)}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
               ))}
@@ -540,6 +591,52 @@ export default function PostCard({ post, onChange }: PostCardProps) {
             </Pressable>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* ─── Scoring Modal (GV chấm điểm bài HV) ─── */}
+      <Modal transparent visible={scoringOpen} animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.editSheet}>
+            <View style={styles.menuHandle} />
+            <Text style={styles.editTitle}>⭐ Chấm điểm bài nộp</Text>
+
+            <Text style={styles.scoreLabel}>Điểm (0 – 100)</Text>
+            <TextInput
+              value={scoreInput}
+              onChangeText={setScoreInput}
+              keyboardType="numeric"
+              maxLength={3}
+              placeholder="VD: 85"
+              placeholderTextColor={theme.colors.muted}
+              style={styles.scoreInput}
+            />
+
+            <Text style={styles.scoreLabel}>Nhận xét / Lỗi kỹ thuật (tuỳ chọn)</Text>
+            <TextInput
+              value={mistakesInput}
+              onChangeText={setMistakesInput}
+              multiline
+              placeholder="VD: Tư thế tay chưa đúng, cần điều chỉnh góc khuỷu..."
+              placeholderTextColor={theme.colors.muted}
+              style={[styles.editInput, { minHeight: 80 }]}
+            />
+
+            <View style={styles.editActions}>
+              <Pressable
+                style={styles.editCancelButton}
+                onPress={() => {
+                  setScoringOpen(false);
+                  setScoreInput('');
+                  setMistakesInput('');
+                }}>
+                <Text style={styles.editCancelText}>Hủy</Text>
+              </Pressable>
+              <Pressable style={styles.editSaveButton} onPress={submitScore}>
+                <Text style={styles.editSaveText}>Gửi điểm</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* ─── Edit Modal ─── */}
@@ -799,6 +896,18 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '400',
   },
+  commentTime: {
+    fontSize: 11,
+    color: '#65676B',
+    marginTop: 3,
+  },
+  emptyComments: {
+    textAlign: 'center',
+    color: '#65676B',
+    fontSize: 13,
+    paddingVertical: 12,
+    fontStyle: 'italic',
+  },
   // Comment input row
   commentInputRow: {
     flexDirection: 'row',
@@ -968,5 +1077,74 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#fff',
+  },
+
+  // ─── Submit banner (HV nộp bài) ───────────────────────────────────────────
+  submitBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E7F3FF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+    borderTopWidth: 0.5,
+    borderTopColor: '#CED0D4',
+  },
+  submitBannerIcon: { fontSize: 18 },
+  submitBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1877F2',
+  },
+  submitBannerArrow: {
+    fontSize: 20,
+    color: '#1877F2',
+    fontWeight: '300',
+  },
+
+  // ─── Score banner (GV chấm điểm) ─────────────────────────────────────────
+  scoreBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF9E6',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+    borderTopWidth: 0.5,
+    borderTopColor: '#CED0D4',
+  },
+  scoreBannerIcon: { fontSize: 18 },
+  scoreBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#B45309',
+  },
+  scoreBannerArrow: {
+    fontSize: 20,
+    color: '#B45309',
+    fontWeight: '300',
+  },
+
+  // ─── Score input in scoring modal ─────────────────────────────────────────
+  scoreLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#65676B',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  scoreInput: {
+    backgroundColor: '#F0F2F5',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#050505',
+    fontSize: 24,
+    fontWeight: '700',
+    borderWidth: 1,
+    borderColor: '#E4E6EB',
+    textAlign: 'center',
   },
 });
