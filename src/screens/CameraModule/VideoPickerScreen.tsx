@@ -12,6 +12,8 @@ import React, { useCallback, useState } from 'react';
 import {
   Alert,
   ActivityIndicator,
+  PermissionsAndroid,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -25,6 +27,45 @@ import { useAuthStore } from '../../store/authStore';
 import { postApi } from '../../network/postApi';
 import { theme } from '../../constants/theme';
 import type { VideoSlot } from '../../types/media';
+
+// Xin quyền camera + microphone (Android runtime permission)
+const requestCameraPermission = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+  try {
+    const granted = await PermissionsAndroid.requestMultiple([
+      PermissionsAndroid.PERMISSIONS.CAMERA,
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+    ]);
+    return (
+      granted[PermissionsAndroid.PERMISSIONS.CAMERA] ===
+        PermissionsAndroid.RESULTS.GRANTED &&
+      granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] ===
+        PermissionsAndroid.RESULTS.GRANTED
+    );
+  } catch {
+    return false;
+  }
+};
+
+// Xin quyền đọc thư viện ảnh/video
+const requestStoragePermission = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+  try {
+    // Android 13+ dùng READ_MEDIA_VIDEO, cũ hơn dùng READ_EXTERNAL_STORAGE
+    const permission =
+      (Platform.Version as number) >= 33
+        ? PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO
+        : PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
+    const result = await PermissionsAndroid.request(permission);
+    return result === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
+  }
+};
 
 // Lazy import react-native-image-picker
 let launchImageLibrary: any;
@@ -82,7 +123,7 @@ export default function VideoPickerScreen() {
   // Choose video
 
   const pickVideo = useCallback(
-    (slotKey: SlotKey, source: 'library' | 'camera') => {
+    async (slotKey: SlotKey, source: 'library' | 'camera') => {
       if (!launchImageLibrary || !launchCamera) {
         Alert.alert(
           'Thiếu thư viện',
@@ -91,10 +132,33 @@ export default function VideoPickerScreen() {
         return;
       }
 
+      // Xin quyền runtime trước khi mở camera/thư viện
+      if (source === 'camera') {
+        const granted = await requestCameraPermission();
+        if (!granted) {
+          Alert.alert(
+            '🔒 Cần cấp quyền Camera',
+            'Vào Cài đặt → Ứng dụng → ParadeLearning → Quyền → bật Camera và Microphone.',
+            [{ text: 'OK' }],
+          );
+          return;
+        }
+      } else {
+        const granted = await requestStoragePermission();
+        if (!granted) {
+          Alert.alert(
+            '🔒 Cần cấp quyền Bộ nhớ',
+            'Vào Cài đặt → Ứng dụng → ParadeLearning → Quyền → bật Ảnh/Video.',
+            [{ text: 'OK' }],
+          );
+          return;
+        }
+      }
+
       const options = {
         mediaType: 'video' as const,
         videoQuality: 'high' as const,
-        durationLimit: 120, // tối đa 2 phút
+        durationLimit: 120,
         includeBase64: false,
       };
 
@@ -102,36 +166,30 @@ export default function VideoPickerScreen() {
         source === 'camera' ? launchCamera : launchImageLibrary;
 
       launcher(options, (response: any) => {
-        // Người dùng tự hủy → không cần thông báo
         if (response.didCancel) {
           return;
         }
 
-        // Xử lý từng loại lỗi
         if (response.errorCode) {
           switch (response.errorCode) {
             case 'camera_unavailable':
               Alert.alert(
                 '📵 Camera không khả dụng',
-                'Máy ảo (Emulator) không có camera thật.\n\n' +
-                  '➜ Hãy dùng nút "🖼 Thư viện" để chọn video có sẵn.\n' +
-                  '➜ Hoặc test trên điện thoại thật.',
-                [{ text: 'Dùng Thư viện', onPress: () => pickVideo(slotKey, 'library') },
-                 { text: 'Đóng', style: 'cancel' }],
+                'Thiết bị không có camera hoặc camera đang được dùng bởi app khác.',
+                [
+                  { text: 'Chọn từ thư viện', onPress: () => pickVideo(slotKey, 'library') },
+                  { text: 'Đóng', style: 'cancel' },
+                ],
               );
               break;
             case 'permission':
               Alert.alert(
-                '🔒 Cần cấp quyền',
-                'Vào Cài đặt → Ứng dụng → ParadeLearning → Quyền → Bật Camera và Bộ nhớ.',
+                '🔒 Bị từ chối quyền',
+                'Vào Cài đặt → Ứng dụng → ParadeLearning → Quyền → bật Camera và Microphone.',
               );
               break;
-            case 'others':
             default:
-              Alert.alert(
-                'Lỗi',
-                response.errorMessage || 'Không thể mở camera. Thử lại sau.',
-              );
+              Alert.alert('Lỗi', response.errorMessage || 'Không thể mở camera.');
           }
           return;
         }
