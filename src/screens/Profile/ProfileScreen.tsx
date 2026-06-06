@@ -77,6 +77,11 @@ export default function ProfileScreen() {
     link: '',
   });
 
+  type BlockedUser = { id: string; name: string; avatar: string };
+  const [showBlocked, setShowBlocked] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [loadingBlocked, setLoadingBlocked] = useState(false);
+
   const loadExtras = useCallback(async () => {
     if (!user?.id) {
       return;
@@ -120,7 +125,9 @@ export default function ProfileScreen() {
         link: extras.link || '',
       });
     } catch (error: any) {
-      Alert.alert(error?.message || 'Không thể tải thông tin cá nhân');
+      if (!error?.message?.includes('No data')) {
+        Alert.alert(error?.message || 'Không thể tải thông tin cá nhân');
+      }
     } finally {
       setLoading(false);
     }
@@ -182,7 +189,9 @@ export default function ProfileScreen() {
           }
         }
       } catch (error: any) {
-        Alert.alert(error?.message || 'Không thể tải bài viết');
+        if (!error?.message?.includes('No data')) {
+          Alert.alert(error?.message || 'Không thể tải bài viết');
+        }
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -244,6 +253,37 @@ export default function ProfileScreen() {
       loadProfile();
     } catch (error: any) {
       Alert.alert(error?.message || 'Không thể cập nhật thông tin');
+    }
+  };
+
+  const loadBlockedList = useCallback(async () => {
+    if (!token) return;
+    try {
+      setLoadingBlocked(true);
+      const res = await userApi.getListBlocks({ token, index: '0', count: '50' });
+      setBlockedUsers(res?.users || []);
+    } catch (error: any) {
+      if (!error?.message?.includes('No data')) {
+        Alert.alert('Lỗi', error?.message || 'Không thể tải danh sách chặn');
+      }
+    } finally {
+      setLoadingBlocked(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (showBlocked) {
+      loadBlockedList();
+    }
+  }, [showBlocked, loadBlockedList]);
+
+  const handleUnblock = async (userId: string) => {
+    try {
+      await userApi.setBlock({ token, userId, type: '1' });
+      setBlockedUsers(prev => prev.filter(u => u.id !== userId));
+      Alert.alert('Thành công', 'Đã bỏ chặn người dùng');
+    } catch (e: any) {
+      Alert.alert('Lỗi', e.message || 'Không thể bỏ chặn');
     }
   };
 
@@ -365,6 +405,16 @@ export default function ProfileScreen() {
               ]}
               onPress={logout}>
               <Text style={styles.iconBtnText}>⋯</Text>
+            </Pressable>
+          </View>
+          <View style={styles.actionRow}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                pressed && styles.secondaryBtnPressed,
+              ]}
+              onPress={() => setShowBlocked(true)}>
+              <Text style={styles.secondaryBtnText}>🚫 Danh sách đã chặn</Text>
             </Pressable>
           </View>
 
@@ -508,6 +558,39 @@ export default function ProfileScreen() {
                 <Text style={styles.saveBtnText}>Lưu</Text>
               </Pressable>
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ─── Blocked Users Modal ─── */}
+      <Modal visible={showBlocked} animationType="slide" transparent>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowBlocked(false)}>
+          <Pressable style={[styles.modalCard, { height: '80%' }]} onPress={e => e.stopPropagation()}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Danh sách đã chặn</Text>
+            {loadingBlocked ? (
+              <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.text }}>Đang tải...</Text>
+            ) : blockedUsers.length === 0 ? (
+               <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.textSecondary }}>Không có người dùng nào bị chặn</Text>
+            ) : (
+              <FlatList
+                data={blockedUsers}
+                keyExtractor={item => item.id}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item }) => (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                    <Avatar uri={item.avatar} name={item.name} size={44} />
+                    <Text style={{ flex: 1, marginLeft: 12, fontSize: 16, fontWeight: '600', color: theme.colors.text }}>{item.name}</Text>
+                    <Pressable
+                      style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: theme.colors.surface2, borderRadius: 20, borderWidth: 1, borderColor: theme.colors.divider }}
+                      onPress={() => handleUnblock(item.id)}
+                    >
+                      <Text style={{ color: theme.colors.text, fontWeight: '600', fontSize: 14 }}>Bỏ chặn</Text>
+                    </Pressable>
+                  </View>
+                )}
+              />
+            )}
           </Pressable>
         </Pressable>
       </Modal>
