@@ -17,7 +17,8 @@ interface Conversation {
     avatar: string;
   };
   lastMessage: {
-    content: string;
+    content?: string;
+    message?: string; // Bọc lót thêm trường message của NestJS
     createdAt: string;
     isRead: boolean;
   };
@@ -27,16 +28,15 @@ export default function ChatListScreen({ navigation }: any) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Gọi API get_list_conversation của thầy
   const fetchConversations = async () => {
     try {
       setLoading(true);
       const response = await apiClient.post('/get_list_conversation', {
-        index: 0,
-        count: 20,
+        index: '0',
+        count: '20',
       });
 
-      if (response.data?.code === '1000') {
+      if (response.data?.code === '1000' || response.data?.code === 1000) {
         setConversations(response.data?.data || []);
       }
     } catch (error) {
@@ -50,41 +50,49 @@ export default function ChatListScreen({ navigation }: any) {
     fetchConversations();
   }, []);
 
-  const renderItem = ({ item }: { item: Conversation }) => (
-    <TouchableOpacity
-      style={styles.chatItem}
-      onPress={() =>
-        navigation.navigate('ChatDetailScreen', {
-          partnerId: item.partner.id,
-          partnerName: item.partner.username,
-        })
-      }
-    >
-      <Image
-        source={
-          item.partner.avatar === '-1'
-            ? { uri: 'https://placehold.co/100x100.png' }
-            : { uri: item.partner.avatar }
+  const renderItem = ({ item }: { item: Conversation }) => {
+    // Check xem Backend trả về trường content hay message để lấy dữ liệu cho đúng
+    const displayMessage =
+      item.lastMessage?.content ||
+      item.lastMessage?.message ||
+      'Hi hình ảnh/văn bản';
+
+    return (
+      <TouchableOpacity
+        style={styles.chatItem}
+        onPress={() =>
+          navigation.navigate('ChatDetailScreen', {
+            partnerId: item.partner.id,
+            partnerName: item.partner.username,
+          })
         }
-        style={styles.avatar}
-      />
-      <View style={styles.chatInfo}>
-        <View style={styles.chatHeader}>
-          <Text style={styles.username}>{item.partner.username}</Text>
-          <Text style={styles.time}>10:00</Text>
+      >
+        <Image
+          source={
+            item.partner.avatar === '-1' || !item.partner.avatar
+              ? { uri: 'https://placehold.co/100x100.png' }
+              : { uri: item.partner.avatar }
+          }
+          style={styles.avatar}
+        />
+        <View style={styles.chatInfo}>
+          <View style={styles.chatHeader}>
+            <Text style={styles.username}>{item.partner.username}</Text>
+            <Text style={styles.time}>10:00</Text>
+          </View>
+          <Text
+            style={[
+              styles.lastMessage,
+              !item.lastMessage?.isRead && styles.unreadText,
+            ]}
+            numberOfLines={1}
+          >
+            {displayMessage}
+          </Text>
         </View>
-        <Text
-          style={[
-            styles.lastMessage,
-            !item.lastMessage.isRead && styles.unreadText,
-          ]}
-          numberOfLines={1}
-        >
-          {item.lastMessage.content}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -94,59 +102,35 @@ export default function ChatListScreen({ navigation }: any) {
         keyExtractor={item => item.id}
         renderItem={renderItem}
         refreshing={loading}
-        onRefresh={fetchConversations} // Tính năng vuốt để tải lại dữ liệu
+        onRefresh={fetchConversations}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-  },
+  container: { flex: 1, backgroundColor: '#ffffff' },
   screenTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     padding: 16,
     color: '#000000',
   },
-  chatItem: {
-    flexDirection: 'row',
-    padding: 16,
-    alignItems: 'center',
-  },
+  chatItem: { flexDirection: 'row', padding: 16, alignItems: 'center' },
   avatar: {
     width: 55,
     height: 55,
     borderRadius: 27.5,
     backgroundColor: '#e4e6eb',
   },
-  chatInfo: {
-    flex: 1,
-    marginLeft: 12,
-    justifyContent: 'center',
-  },
+  chatInfo: { flex: 1, marginLeft: 12, justifyContent: 'center' },
   chatHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyStyle: 'space-between',
     marginBottom: 4,
   },
-  username: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#050505',
-  },
-  time: {
-    fontSize: 12,
-    color: '#65676b',
-  },
-  lastMessage: {
-    fontSize: 14,
-    color: '#65676b',
-  },
-  unreadText: {
-    fontWeight: 'bold',
-    color: '#000000',
-  },
+  username: { fontSize: 16, fontWeight: '600', color: '#050505' },
+  time: { fontSize: 12, color: '#65676b' },
+  lastMessage: { fontSize: 14, color: '#65676b' },
+  unreadText: { fontWeight: 'bold', color: '#000000' },
 });

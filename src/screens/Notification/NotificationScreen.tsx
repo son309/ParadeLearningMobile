@@ -17,7 +17,10 @@ interface NotificationItem {
   content: string;
   createdAt: string;
   isRead: boolean;
-  avatar: string;
+  avatar?: string;
+  actor?: {
+    avatar: string;
+  };
 }
 
 export default function NotificationScreen() {
@@ -25,16 +28,15 @@ export default function NotificationScreen() {
   const [loading, setLoading] = useState(false);
   const socket = getSocket();
 
-  // Gọi API get_notification đồng bộ dữ liệu cũ
   const fetchNotifications = async () => {
     try {
       setLoading(true);
       const response = await apiClient.post('/get_notification', {
-        index: 0,
-        count: 20,
+        index: '0',
+        count: '20',
       });
 
-      if (response.data?.code === '1000') {
+      if (response.data?.code === '1000' || response.data?.code === 1000) {
         setNotifications(response.data?.data || []);
       }
     } catch (error) {
@@ -47,7 +49,6 @@ export default function NotificationScreen() {
   useEffect(() => {
     fetchNotifications();
 
-    // Nghe thông báo Realtime từ socket nhóm làm sẵn
     if (socket) {
       socket.on('push_notification', (newNotification: any) => {
         setNotifications(prevNotifs => [newNotification, ...prevNotifs]);
@@ -61,13 +62,12 @@ export default function NotificationScreen() {
     };
   }, [socket]);
 
-  // Đánh dấu đã đọc thông báo khi người dùng nhấn vào
   const handleMarkAsRead = async (notificationId: string) => {
     try {
       const response = await apiClient.post('/set_read_notification', {
-        notification_id: notificationId,
+        notificationId: notificationId,
       });
-      if (response.data?.code === '1000') {
+      if (response.data?.code === '1000' || response.data?.code === 1000) {
         setNotifications(prev =>
           prev.map(item =>
             item.id === notificationId ? { ...item, isRead: true } : item,
@@ -79,29 +79,34 @@ export default function NotificationScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: NotificationItem }) => (
-    <TouchableOpacity
-      style={[styles.notifItem, !item.isRead && styles.unreadItem]}
-      onPress={() => handleMarkAsRead(item.id)}
-    >
-      <Image
-        source={
-          item.avatar === '-1'
-            ? { uri: 'https://placehold.co/100x100.png' }
-            : { uri: item.avatar }
-        }
-        style={styles.avatar}
-      />
-      <View style={styles.notifContent}>
-        <Text style={[styles.notifText, !item.isRead && styles.unreadText]}>
-          <Text style={styles.boldText}>{item.title} </Text>
-          {item.content}
-        </Text>
-        <Text style={styles.timeText}>Vừa xong</Text>
-      </View>
-      {!item.isRead && <View style={styles.unreadDot} />}
-    </TouchableOpacity>
-  );
+  const renderItem = ({ item }: { item: NotificationItem }) => {
+    // Bọc lót lấy avatar trực tiếp hoặc lấy từ object actor do backend sinh ra thêm
+    const avatarUri = item.avatar || item.actor?.avatar;
+
+    return (
+      <TouchableOpacity
+        style={[styles.notifItem, !item.isRead && styles.unreadItem]}
+        onPress={() => handleMarkAsRead(item.id)}
+      >
+        <Image
+          source={
+            avatarUri === '-1' || !avatarUri
+              ? { uri: 'https://placehold.co/100x100.png' }
+              : { uri: avatarUri }
+          }
+          style={styles.avatar}
+        />
+        <View style={styles.notifContent}>
+          <Text style={[styles.notifText, !item.isRead && styles.unreadText]}>
+            <Text style={styles.boldText}>{item.title} </Text>
+            {item.content}
+          </Text>
+          <Text style={styles.timeText}>Vừa xong</Text>
+        </View>
+        {!item.isRead && <View style={styles.unreadDot} />}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
