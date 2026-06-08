@@ -1,97 +1,214 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# ParadeLearningMobile
 
-# Getting Started
+Frontend React Native cho ứng dụng học động tác / bài tập theo video.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
 
-## Step 1: Start Metro
+## 1. Công nghệ sử dụng
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+- React Native
+- TypeScript
+- React Navigation
+- Axios
+- Zustand
+- Socket.IO Client
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+---
 
-```sh
-# Using npm
+## 2. Backend server
+
+App hiện đang gọi API từ server đã deploy:
+
+```txt
+http://group1.it4788.sukkaito.id.vn/it4788
+```
+
+Socket server:
+
+```txt
+http://group1.it4788.sukkaito.id.vn
+```
+
+File cấu hình server nằm tại:
+
+```txt
+src/constants/config.ts
+```
+
+Nếu cần đổi server, sửa file `src/constants/config.ts`:
+
+```ts
+export const CONFIG = {
+  API_BASE_URL: 'http://group1.it4788.sukkaito.id.vn/it4788',
+  SOCKET_URL: 'http://group1.it4788.sukkaito.id.vn',
+};
+```
+
+---
+
+## 3. Yêu cầu môi trường
+
+Máy cần cài:
+
+- Node.js
+- npm
+- Git
+- JDK 17
+- Android Studio
+- Android SDK
+- Android SDK Platform Tools
+- Điện thoại Android thật hoặc Android Emulator
+
+Kiểm tra môi trường:
+
+```bash
+node -v
+npm -v
+git --version
+java -version
+adb version
+```
+
+Nếu dùng điện thoại Android thật, cần bật:
+
+```txt
+Developer Options -> USB Debugging
+```
+
+---
+
+## 4. Cài đặt project
+
+Clone repo:
+
+```bash
+git clone https://github.com/son309/ParadeLearningMobile.git
+cd ParadeLearningMobile
+```
+
+Chuyển sang branch đang phát triển:
+
+```bash
+git checkout feature/auth-navigation-socket
+```
+
+Cài dependencies:
+
+```bash
+npm install
+```
+
+---
+
+## 5. Chạy app trên Android
+
+### Bước 1: Chạy Metro server
+
+Mở terminal thứ nhất:
+
+```bash
 npm start
-
-# OR using Yarn
-yarn start
 ```
 
-## Step 2: Build and run your app
+Giữ terminal này chạy, không tắt.
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+---
 
-### Android
+### Bước 2: Kết nối điện thoại
 
-```sh
-# Using npm
+Mở terminal thứ hai:
+
+```bash
+adb devices
+```
+
+Nếu thấy dạng:
+
+```txt
+xxxxxxxx    device
+```
+
+là máy đã nhận điện thoại.
+
+Nếu thấy:
+
+```txt
+unauthorized
+```
+
+hãy nhìn điện thoại và bấm **Allow USB debugging**.
+
+---
+
+### Bước 3: Reverse port cho điện thoại thật
+
+Nếu chạy bằng điện thoại Android thật, cần chạy:
+
+```bash
+adb reverse tcp:8081 tcp:8081
+```
+
+---
+
+### Bước 4: Build và mở app
+
+Ở terminal thứ hai:
+
+```bash
+npm run android -- --no-packager
+```
+
+Nếu không dùng `--no-packager`, có thể chạy:
+
+```bash
 npm run android
-
-# OR using Yarn
-yarn android
 ```
 
-### iOS
+---
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+## 6. Chạy lại app sau khi đã cài trên điện thoại
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+Nếu app đã được cài trên điện thoại rồi, những lần sau thường chỉ cần:
 
-```sh
-bundle install
+Terminal 1:
+
+```bash
+npm start
 ```
 
-Then, and every time you update your native dependencies, run:
+Terminal 2:
 
-```sh
-bundle exec pod install
+```bash
+adb reverse tcp:8081 tcp:8081
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+Sau đó mở app trực tiếp trên điện thoại.
 
-```sh
-# Using npm
-npm run ios
+Nếu app không tự reload, mở Dev Menu rồi chọn **Reload**, hoặc chạy:
 
-# OR using Yarn
-yarn ios
+```bash
+adb shell input keyevent 82
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+---
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+## 7. Reset cache khi lỗi
 
-## Step 3: Modify your app
+Nếu app trắng màn hình, không reload, hoặc lỗi bundle:
 
-Now that you have successfully run the app, let's make changes!
+```bash
+npm start -- --reset-cache
+```
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+Nếu cần xóa dữ liệu app trên điện thoại:
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+```bash
+adb shell pm clear com.paradelearningmobile
+```
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+Sau đó chạy lại:
 
-## Congratulations! :tada:
+```bash
+adb reverse tcp:8081 tcp:8081
+npm run android -- --no-packager
+```
 
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
