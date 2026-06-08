@@ -351,14 +351,17 @@ export default function PostCard({ post, onChange }: PostCardProps) {
 
       {/* ─── Media ─── */}
       {hasMedia && (
-        <View style={styles.videoWrap}>
+        <View style={[styles.videoWrap, videoItems.length === 2 && styles.videoWrapTwo]}>
           {videoItems.map((item, index) => (
             <Video
               key={`${post.post_id}-video-${index}`}
               source={{ uri: item.url }}
               controls
-              style={styles.video}
-              resizeMode="contain"
+              style={[
+                styles.video,
+                videoItems.length === 2 && styles.videoTwo,
+              ]}
+              resizeMode="cover"
             />
           ))}
         </View>
@@ -776,9 +779,17 @@ const styles = StyleSheet.create({
   videoWrap: {
     backgroundColor: '#000',
   },
+  videoWrapTwo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   video: {
     width: '100%',
-    height: 240,
+    height: 360,
+  },
+  videoTwo: {
+    width: '49.8%',
+    height: 400,
   },
 
   // ─── Reaction summary row ──────────────────────────────────────────────────

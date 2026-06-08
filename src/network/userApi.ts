@@ -31,6 +31,17 @@ export const userApi = {
     return unwrapResponse(response.data);
   },
 
+  setAvatar: async (token: string, image: { uri: string; type: string; name: string }) => {
+    const formData = new FormData();
+    formData.append('token', token);
+    formData.append('avatar', image as any);
+
+    const response = await apiClient.post('/set_user_info', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return unwrapResponse(response.data);
+  },
+
   setBlock: async (params: {
     token: string;
     userId: string;

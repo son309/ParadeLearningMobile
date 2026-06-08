@@ -16,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import LinearGradient from 'react-native-linear-gradient';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { theme } from '../../constants/theme';
 import Avatar from '../../components/Avatar';
 import PostCard from '../../components/PostCard';
@@ -256,6 +257,29 @@ export default function ProfileScreen() {
     }
   };
 
+  const handlePickAvatar = async () => {
+    if (!token) return;
+    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8 });
+    if (result.assets && result.assets.length > 0) {
+      const asset = result.assets[0];
+      if (!asset.uri) return;
+      try {
+        setLoading(true);
+        await userApi.setAvatar(token, {
+          uri: asset.uri,
+          type: asset.type || 'image/jpeg',
+          name: asset.fileName || 'avatar.jpg',
+        });
+        Alert.alert('Thành công', 'Đã cập nhật ảnh đại diện');
+        loadProfile();
+      } catch (error: any) {
+        Alert.alert('Lỗi', error?.message || 'Không thể cập nhật ảnh');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   const loadBlockedList = useCallback(async () => {
     if (!token) return;
     try {
@@ -329,7 +353,8 @@ export default function ProfileScreen() {
               style={({ pressed }) => [
                 styles.editCoverBtn,
                 pressed && { opacity: 0.8 },
-              ]}>
+              ]}
+              onPress={handlePickAvatar}>
               <Text style={styles.editCoverText}>📷</Text>
             </Pressable>
           </View>
