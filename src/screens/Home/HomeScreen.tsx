@@ -87,6 +87,7 @@ const storyStyles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     marginBottom: theme.spacing.sm,
     paddingBottom: theme.spacing.md,
+    // FB mobile uses no drop shadows on the main feed blocks
   },
   scroll: {
     paddingHorizontal: theme.spacing.md,
@@ -94,27 +95,27 @@ const storyStyles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   storyCard: {
-    width: 88,
+    width: 96,
     alignItems: 'center',
     gap: theme.spacing.xs,
   },
   storyCardPressed: {
-    opacity: 0.85,
+    opacity: 0.8,
   },
   avatarRing: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    padding: 2.5,
+    padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarRingInner: {
-    width: 63,
-    height: 63,
-    borderRadius: 31.5,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
     backgroundColor: theme.colors.surface,
-    padding: 2,
+    padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -125,27 +126,23 @@ const storyStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   addStoryCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
+    ...theme.shadow.primaryGlow, // Kept a slight glow for the primary button
   },
   addIcon: {
-    fontSize: 28,
+    fontSize: 32,
     color: '#fff',
-    fontWeight: '700',
-    lineHeight: 32,
+    fontWeight: theme.fontWeight.regular,
+    lineHeight: 36,
   },
   storyEmoji: {
-    width: 59,
-    height: 59,
-    borderRadius: 29.5,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: theme.colors.surface2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -153,9 +150,9 @@ const storyStyles = StyleSheet.create({
   storyName: {
     fontSize: theme.font.xs,
     color: theme.colors.text,
-    fontWeight: '500',
+    fontWeight: theme.fontWeight.semibold,
     textAlign: 'center',
-    width: 80,
+    width: 88,
   },
 });
 
@@ -249,14 +246,15 @@ const createStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.divider,
     justifyContent: 'center',
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
   },
   inputFakePressed: {
     backgroundColor: theme.colors.divider,
   },
   inputText: {
-    fontSize: theme.font.sm,
+    fontSize: theme.font.md,
     color: theme.colors.textSecondary,
+    fontWeight: theme.fontWeight.regular,
   },
   divider: {
     height: 0.5,
@@ -275,7 +273,7 @@ const createStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: theme.spacing.sm,
-    gap: 4,
+    gap: 6,
   },
   actionDivider: {
     width: 0.5,
@@ -284,11 +282,11 @@ const createStyles = StyleSheet.create({
     marginVertical: theme.spacing.xs,
   },
   actionEmoji: {
-    fontSize: 16,
+    fontSize: 20,
   },
   actionText: {
-    fontSize: theme.font.xs,
-    fontWeight: '600',
+    fontSize: theme.font.sm,
+    fontWeight: theme.fontWeight.semibold,
     color: theme.colors.textSecondary,
   },
   // Teacher create post button
@@ -300,8 +298,9 @@ const createStyles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     backgroundColor: theme.colors.primary,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.full,
     gap: theme.spacing.sm,
+    ...theme.shadow.primaryGlow,
   },
   teacherCreateIcon: {
     fontSize: 20,
@@ -309,13 +308,13 @@ const createStyles = StyleSheet.create({
   teacherCreateText: {
     flex: 1,
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: theme.fontWeight.bold,
     fontSize: theme.font.sm,
   },
   teacherCreateArrow: {
     color: 'rgba(255,255,255,0.8)',
     fontSize: 22,
-    fontWeight: '300',
+    fontWeight: theme.fontWeight.regular,
   },
 });
 
