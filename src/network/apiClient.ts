@@ -26,8 +26,9 @@ apiClient.interceptors.response.use(
     const code = error?.response?.data?.code;
 
     if (code === '9997' || code === '9998' || code === 9997 || code === 9998) {
-      await AsyncStorage.removeItem('token');
-      await AsyncStorage.removeItem('user');
+      await AsyncStorage.multiRemove(['token', 'user']);
+      const { useAuthStore } = require('../store/authStore');
+      useAuthStore.getState().logout();
     }
 
     console.log('API Error:', error?.response?.data || error.message);
