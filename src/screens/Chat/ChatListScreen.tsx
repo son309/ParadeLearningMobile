@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { apiClient } from '../../network/apiClient';
+import { timeAgoVi } from '../../utils/timeAgo';
 
 interface Conversation {
   id: string;
@@ -16,19 +18,19 @@ interface Conversation {
     username: string;
     avatar: string;
   };
-  lastMessage: {
-    content?: string;
-    message?: string; // Bọc lót thêm trường message của NestJS
-    createdAt: string;
-    isRead: boolean;
-  };
+  lastmessage: {
+    message: string;
+    created: string;
+    unread: string;
+  } | null;
+  created: string;
 }
 
 export default function ChatListScreen({ navigation }: any) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     try {
       setLoading(true);
       const response = await apiClient.post('/get_list_conversation', {
@@ -37,25 +39,25 @@ export default function ChatListScreen({ navigation }: any) {
       });
 
       if (response.data?.code === '1000' || response.data?.code === 1000) {
-        setConversations(response.data?.data || []);
+        setConversations(response.data?.data?.data || []);
       }
     } catch (error) {
       console.log('Lỗi lấy danh sách chat:', error);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchConversations();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchConversations();
+    }, [fetchConversations]),
+  );
+
   const renderItem = ({ item }: { item: Conversation }) => {
-    // Check xem Backend trả về trường content hay message để lấy dữ liệu cho đúng
-    const displayMessage =
-      item.lastMessage?.content ||
-      item.lastMessage?.message ||
-      'Hi hình ảnh/văn bản';
+    const displayMessage = item.lastmessage?.message || '';
+    const isUnread = item.lastmessage?.unread === '1';
+    const timeText = timeAgoVi(item.lastmessage?.created || item.created);
 
     return (
       <TouchableOpacity
@@ -78,13 +80,10 @@ export default function ChatListScreen({ navigation }: any) {
         <View style={styles.chatInfo}>
           <View style={styles.chatHeader}>
             <Text style={styles.username}>{item.partner.username}</Text>
-            <Text style={styles.time}>10:00</Text>
+            <Text style={styles.time}>{timeText}</Text>
           </View>
           <Text
-            style={[
-              styles.lastMessage,
-              !item.lastMessage?.isRead && styles.unreadText,
-            ]}
+            style={[styles.lastMessage, isUnread && styles.unreadText]}
             numberOfLines={1}
           >
             {displayMessage}
@@ -103,6 +102,18 @@ export default function ChatListScreen({ navigation }: any) {
         renderItem={renderItem}
         refreshing={loading}
         onRefresh={fetchConversations}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>💬</Text>
+              <Text style={styles.emptyTitle}>Chưa có cuộc trò chuyện nào</Text>
+              <Text style={styles.emptyDesc}>
+                Vào trang cá nhân của ai đó và bấm "Nhắn tin" để bắt đầu.
+              </Text>
+            </View>
+          ) : null
+        }
       />
     </View>
   );
@@ -126,11 +137,36 @@ const styles = StyleSheet.create({
   chatInfo: { flex: 1, marginLeft: 12, justifyContent: 'center' },
   chatHeader: {
     flexDirection: 'row',
-    justifyStyle: 'space-between',
+    justifyContent: 'space-between',
     marginBottom: 4,
   },
   username: { fontSize: 16, fontWeight: '600', color: '#050505' },
   time: { fontSize: 12, color: '#65676b' },
   lastMessage: { fontSize: 14, color: '#65676b' },
   unreadText: { fontWeight: 'bold', color: '#000000' },
+  separator: {
+    height: 0.5,
+    backgroundColor: '#f0f2f5',
+    marginLeft: 83,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyIcon: { fontSize: 56 },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#050505',
+    textAlign: 'center',
+  },
+  emptyDesc: {
+    fontSize: 14,
+    color: '#65676b',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 });

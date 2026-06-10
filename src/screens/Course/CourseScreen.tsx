@@ -632,22 +632,6 @@ function StudentView() {
           contentContainerStyle={styles.list}
           refreshing={loadingEnrolled}
           onRefresh={loadEnrolledCourses}
-          ListHeaderComponent={
-            <Pressable
-              style={styles.submitVideoCard}
-              onPress={() => navigation.navigate('VideoPickerScreen')}>
-              <View style={styles.submitVideoIconWrap}>
-                <Text style={styles.submitVideoIcon}>🤖</Text>
-              </View>
-              <View style={styles.submitVideoInfo}>
-                <Text style={styles.submitVideoTitle}>Nộp bài tập video</Text>
-                <Text style={styles.submitVideoDesc}>
-                  Quay 2 góc · AI chấm điểm kỹ thuật tự động
-                </Text>
-              </View>
-              <Text style={styles.submitVideoArrow}>›</Text>
-            </Pressable>
-          }
           ListEmptyComponent={
             !loadingEnrolled ? (
               <View style={styles.emptyContainer}>
@@ -660,7 +644,7 @@ function StudentView() {
             ) : null
           }
           renderItem={({ item }) => (
-            <View style={styles.teacherCard}>
+            <View style={styles.enrolledCard}>
               <Pressable
                 style={styles.userArea}
                 onPress={() =>
@@ -670,17 +654,22 @@ function StudentView() {
                     avatar: item.avatar,
                   })
                 }>
-                <Avatar uri={item.avatar} name={item.name} size={64} />
+                <Avatar uri={item.avatar} name={item.name} size={52} />
                 <View style={styles.teacherInfo}>
                   <Text style={styles.teacherName}>{item.name}</Text>
                   <Text style={styles.teacherRoleLabel}>Giáo viên của bạn</Text>
                 </View>
               </Pressable>
-              <View style={[styles.statusBadge, styles.enrolledBadge]}>
-                <Text style={[styles.statusText, styles.enrolledText]}>
-                  Đã tham gia
-                </Text>
-              </View>
+              <Pressable
+                style={styles.submitBtn}
+                onPress={() =>
+                  navigation.navigate('VideoPickerScreen', {
+                    courseId: item.id,
+                    exerciseTitle: `Nộp bài cho ${item.name}`,
+                  })
+                }>
+                <Text style={styles.submitBtnText}>📤 Nộp bài</Text>
+              </Pressable>
             </View>
           )}
         />
@@ -1007,51 +996,34 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 
-  // ─── Submit video card ─────────────────────────────────────────────────────
-  submitVideoCard: {
+  // ─── Enrolled course card (HV đã vào lớp) ────────────────────────────────
+  enrolledCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
     marginHorizontal: 12,
-    marginTop: 12,
-    marginBottom: 4,
-    backgroundColor: '#1877F2',
+    marginTop: 8,
     borderRadius: 12,
-    padding: 14,
-    gap: 12,
-    shadowColor: '#1877F2',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
+    padding: 12,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  submitVideoIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  submitBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#1877F2',
+    borderRadius: 9999,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  submitVideoIcon: {
-    fontSize: 22,
-  },
-  submitVideoInfo: {
-    flex: 1,
-  },
-  submitVideoTitle: {
-    fontWeight: '800',
+  submitBtnText: {
     color: '#fff',
-    fontSize: 15,
-  },
-  submitVideoDesc: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  submitVideoArrow: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '300',
+    fontWeight: '700',
+    fontSize: 13,
   },
 
   // ─── Teacher create exercise card ──────────────────────────────────────────

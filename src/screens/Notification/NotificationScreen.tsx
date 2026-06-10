@@ -7,26 +7,27 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { apiClient } from '../../network/apiClient';
 import { getSocket } from '../../network/socket';
+import { timeAgoVi } from '../../utils/timeAgo';
 
 interface NotificationItem {
-  id: string;
   type: string;
+  objectId: string;
   title: string;
-  content: string;
-  createdAt: string;
-  isRead: boolean;
-  avatar?: string;
-  actor?: {
-    avatar: string;
-  };
+  notificationId: string;
+  created: string;
+  avatar: string;
+  group: string;
+  read: string; // '0' = chưa đọc, '1' = đã đọc
 }
 
 export default function NotificationScreen() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const socket = getSocket();
+  const navigation = useNavigation<any>();
 
   const fetchNotifications = async () => {
     try {
@@ -37,7 +38,7 @@ export default function NotificationScreen() {
       });
 
       if (response.data?.code === '1000' || response.data?.code === 1000) {
-        setNotifications(response.data?.data || []);
+        setNotifications(response.data?.data?.data || []);
       }
     } catch (error) {
       console.log('Lỗi lấy danh sách thông báo:', error);
@@ -50,8 +51,20 @@ export default function NotificationScreen() {
     fetchNotifications();
 
     if (socket) {
-      socket.on('push_notification', (newNotification: any) => {
-        setNotifications(prevNotifs => [newNotification, ...prevNotifs]);
+      socket.on('push_notification', (payload: any) => {
+        const newNotif: NotificationItem = {
+          type: payload.type ?? 'home',
+          objectId: payload.object_id ?? payload.objectId ?? '0',
+          title: payload.title ?? '',
+          notificationId: payload.notificationId ?? '',
+          created: payload.created ?? new Date().toISOString(),
+          avatar: payload.avatar ?? '',
+          group: payload.group ?? '1',
+          read: '0',
+        };
+        if (newNotif.notificationId) {
+          setNotifications(prev => [newNotif, ...prev]);
+        }
       });
     }
 
@@ -65,12 +78,14 @@ export default function NotificationScreen() {
   const handleMarkAsRead = async (notificationId: string) => {
     try {
       const response = await apiClient.post('/set_read_notification', {
-        notificationId: notificationId,
+        notificationId,
       });
       if (response.data?.code === '1000' || response.data?.code === 1000) {
         setNotifications(prev =>
           prev.map(item =>
-            item.id === notificationId ? { ...item, isRead: true } : item,
+            item.notificationId === notificationId
+              ? { ...item, read: '1' }
+              : item,
           ),
         );
       }
@@ -79,31 +94,39 @@ export default function NotificationScreen() {
     }
   };
 
+  const handlePress = async (item: NotificationItem) => {
+    if (item.read === '0') {
+      await handleMarkAsRead(item.notificationId);
+    }
+
+    if (item.type === 'message' && item.objectId && item.objectId !== '0') {
+      navigation.navigate('ChatTab', {
+        screen: 'ChatDetailScreen',
+        params: { conversationId: item.objectId, partnerName: '' },
+      });
+    }
+  };
+
   const renderItem = ({ item }: { item: NotificationItem }) => {
-    // Bọc lót lấy avatar trực tiếp hoặc lấy từ object actor do backend sinh ra thêm
-    const avatarUri = item.avatar || item.actor?.avatar;
+    const isUnread = item.read === '0';
+    const avatarUri =
+      item.avatar && item.avatar !== 'app_icon' && item.avatar !== '-1'
+        ? { uri: item.avatar }
+        : { uri: 'https://placehold.co/100x100.png' };
 
     return (
       <TouchableOpacity
-        style={[styles.notifItem, !item.isRead && styles.unreadItem]}
-        onPress={() => handleMarkAsRead(item.id)}
+        style={[styles.notifItem, isUnread && styles.unreadItem]}
+        onPress={() => handlePress(item)}
       >
-        <Image
-          source={
-            avatarUri === '-1' || !avatarUri
-              ? { uri: 'https://placehold.co/100x100.png' }
-              : { uri: avatarUri }
-          }
-          style={styles.avatar}
-        />
+        <Image source={avatarUri} style={styles.avatar} />
         <View style={styles.notifContent}>
-          <Text style={[styles.notifText, !item.isRead && styles.unreadText]}>
-            <Text style={styles.boldText}>{item.title} </Text>
-            {item.content}
+          <Text style={[styles.notifText, isUnread && styles.unreadText]}>
+            {item.title}
           </Text>
-          <Text style={styles.timeText}>Vừa xong</Text>
+          <Text style={styles.timeText}>{timeAgoVi(item.created)}</Text>
         </View>
-        {!item.isRead && <View style={styles.unreadDot} />}
+        {isUnread && <View style={styles.unreadDot} />}
       </TouchableOpacity>
     );
   };
@@ -113,7 +136,7 @@ export default function NotificationScreen() {
       <Text style={styles.screenTitle}>Thông báo</Text>
       <FlatList
         data={notifications}
-        keyExtractor={item => item.id}
+        keyExtractor={item => item.notificationId}
         renderItem={renderItem}
         refreshing={loading}
         onRefresh={fetchNotifications}
@@ -148,8 +171,7 @@ const styles = StyleSheet.create({
   },
   notifContent: { flex: 1, marginLeft: 12, paddingRight: 8 },
   notifText: { fontSize: 15, color: '#050505', lineHeight: 20 },
-  boldText: { fontWeight: 'bold' },
-  unreadText: { color: '#000000' },
+  unreadText: { fontWeight: 'bold', color: '#000000' },
   timeText: { fontSize: 12, color: '#65676b', marginTop: 4 },
   unreadDot: {
     width: 12,

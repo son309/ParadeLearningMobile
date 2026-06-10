@@ -6,9 +6,9 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import PostCard from '../../components/PostCard';
 import { theme } from '../../constants/theme';
 import { postApi } from '../../network/postApi';
@@ -16,8 +16,8 @@ import { useAuthStore } from '../../store/authStore';
 import type { PostItem } from '../../types/post';
 
 export default function NewPostScreen() {
+  const navigation = useNavigation<any>();
   const { token, user } = useAuthStore();
-  const [content, setContent] = useState('');
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -27,7 +27,6 @@ export default function NewPostScreen() {
     if (!token || !user?.id) {
       return;
     }
-
     setLoading(true);
     try {
       const data = await postApi.getListPosts({
@@ -49,80 +48,68 @@ export default function NewPostScreen() {
     loadPosts();
   }, [loadPosts]);
 
-  const submitPost = async () => {
-    if (!token || !user?.id) {
-      Alert.alert('Vui lòng đăng nhập');
-      return;
-    }
-
-    const trimmedContent = content.trim();
-    if (!trimmedContent) {
-      Alert.alert('Nội dung không được để trống');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await postApi.addPost({
-        token,
-        described: trimmedContent,
-        device_master: 'mobile',
-      });
-      setContent('');
-      Alert.alert('Thành công', 'Bài đăng đã được tạo');
-      loadPosts();
-    } catch (error: any) {
-      Alert.alert(error?.message || 'Không thể tạo bài đăng');
-    } finally {
-      setLoading(false);
-    }
+  const handleCreatePost = () => {
+    navigation.navigate('VideoPickerScreen', { isTeacherCreating: true });
   };
 
   const renderPost = ({ item }: { item: PostItem }) => (
     <PostCard post={item} onChange={loadPosts} />
   );
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.header}>Teacher Post Management</Text>
-      {isTeacher ? (
-        <View style={styles.content}>
-          <View style={styles.formCard}>
-            <TextInput
-              placeholder="Write your post here..."
-              placeholderTextColor={theme.colors.muted}
-              value={content}
-              onChangeText={setContent}
-              multiline
-              style={[styles.input, styles.textArea]}
-            />
-            <Pressable
-              style={[styles.button, (!content.trim() || loading) && styles.buttonDisabled]}
-              onPress={submitPost}
-              disabled={!content.trim() || loading}
-            >
-              <Text style={styles.buttonText}>Create Post</Text>
-            </Pressable>
-          </View>
-
-          <Text style={styles.sectionTitle}>My Posts</Text>
-          <FlatList
-            data={posts}
-            keyExtractor={(item) => item.post_id}
-            renderItem={renderPost}
-            refreshing={loading}
-            onRefresh={loadPosts}
-            ListEmptyComponent={!loading ? <Text style={styles.emptyText}>Chưa có bài đăng nào</Text> : null}
-            contentContainerStyle={styles.list}
-          />
-        </View>
-      ) : (
+  if (!isTeacher) {
+    return (
+      <SafeAreaView style={styles.container}>
         <View style={styles.notAllowed}>
+          <Text style={styles.notAllowedIcon}>🔒</Text>
           <Text style={styles.notAllowedText}>
             Chức năng này chỉ dành cho giáo viên.
           </Text>
         </View>
-      )}
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <FlatList
+        data={posts}
+        keyExtractor={item => item.post_id}
+        renderItem={renderPost}
+        refreshing={loading}
+        onRefresh={loadPosts}
+        ListHeaderComponent={
+          <View style={styles.headerSection}>
+            <Text style={styles.screenTitle}>Bài đăng của tôi</Text>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.createBtn,
+                pressed && styles.createBtnPressed,
+              ]}
+              onPress={handleCreatePost}
+            >
+              <Text style={styles.createBtnIcon}>+</Text>
+              <Text style={styles.createBtnText}>Tạo bài đăng mới</Text>
+            </Pressable>
+
+            {posts.length > 0 && (
+              <Text style={styles.sectionLabel}>Các bài đăng của bạn</Text>
+            )}
+          </View>
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>📝</Text>
+              <Text style={styles.emptyTitle}>Chưa có bài đăng nào</Text>
+              <Text style={styles.emptyDesc}>
+                Bấm "Tạo bài đăng mới" để đăng video bài tập cho học viên.
+              </Text>
+            </View>
+          ) : null
+        }
+        contentContainerStyle={styles.listContent}
+      />
     </SafeAreaView>
   );
 }
@@ -132,73 +119,84 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  header: {
-    fontSize: 20,
+  listContent: {
+    paddingBottom: 32,
+  },
+  headerSection: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: theme.spacing.md,
+    backgroundColor: theme.colors.background,
+  },
+  screenTitle: {
+    fontSize: 24,
     fontWeight: '700',
     color: theme.colors.text,
-    marginTop: theme.spacing.lg,
-    marginHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.md,
-  },
-  formCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.lg,
-  },
-  input: {
-    minHeight: 120,
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.radius.sm,
-    padding: theme.spacing.md,
-    color: theme.colors.text,
-    textAlignVertical: 'top',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  textArea: {
-    minHeight: 140,
-  },
-  button: {
-    marginTop: theme.spacing.md,
-    height: 48,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.radius.sm,
+  createBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    height: 52,
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.radius.md,
+    gap: 8,
+    marginBottom: theme.spacing.lg,
   },
-  buttonDisabled: {
-    opacity: 0.5,
+  createBtnPressed: {
+    opacity: 0.85,
   },
-  buttonText: {
-    color: theme.colors.surface,
-    fontWeight: '700',
+  createBtnIcon: {
+    fontSize: 22,
+    fontWeight: '300',
+    color: '#fff',
+    lineHeight: 26,
   },
-  sectionTitle: {
+  createBtnText: {
     fontSize: 16,
     fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
+    color: '#fff',
   },
-  list: {
-    paddingBottom: theme.spacing.xl,
-  },
-  emptyText: {
-    textAlign: 'center',
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
     color: theme.colors.muted,
-    marginTop: theme.spacing.lg,
+    marginBottom: theme.spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    paddingTop: theme.spacing.xl,
+    gap: theme.spacing.sm,
+  },
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
+  emptyDesc: {
+    fontSize: 14,
+    color: theme.colors.muted,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   notAllowed: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: theme.spacing.lg,
+    gap: theme.spacing.md,
+  },
+  notAllowedIcon: {
+    fontSize: 48,
   },
   notAllowedText: {
     textAlign: 'center',

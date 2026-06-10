@@ -15,6 +15,21 @@ apiClient.interceptors.request.use(async config => {
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+    if (config.method?.toUpperCase() === 'POST' && !(config.data instanceof FormData)) {
+      if (!config.data) {
+        config.data = { token };
+      } else if (typeof config.data === 'string') {
+        try {
+          const parsed = JSON.parse(config.data);
+          if (!parsed.token) parsed.token = token;
+          config.data = JSON.stringify(parsed);
+        } catch(e) {}
+      } else if (typeof config.data === 'object') {
+        if (!config.data.token) {
+          config.data.token = token;
+        }
+      }
+    }
   }
 
   return config;

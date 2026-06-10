@@ -45,7 +45,7 @@ type Props = {
 export default function UserProfileScreen({ route }: Props) {
   const { userId, username: initialName, avatar: initialAvatar } = route.params;
   const navigation = useNavigation<any>();
-  const { token } = useAuthStore();
+  const { token, user: currentUser } = useAuthStore();
 
   const [profile, setProfile] = useState<ProfileInfo | null>(
     initialName
@@ -164,6 +164,7 @@ export default function UserProfileScreen({ route }: Props) {
   }, [loadBlockStatus]);
 
   const name = profile?.username || initialName || 'Người dùng';
+  const isOwnProfile = currentUser?.id === userId;
   const coverUri = profile?.coverImage;
   const isOnline = profile?.online === '1';
 
@@ -232,23 +233,46 @@ export default function UserProfileScreen({ route }: Props) {
           </View>
         </View>
 
-        {/* Nút chặn / bỏ chặn */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.blockButton,
-            isBlocked ? styles.blockButtonActive : styles.blockButtonDefault,
-            pressed && { opacity: 0.75 },
-            blockLoading && { opacity: 0.5 },
-          ]}
-          onPress={toggleBlock}
-          disabled={blockLoading}>
-          <Text style={[
-            styles.blockButtonText,
-            isBlocked ? styles.blockButtonTextActive : styles.blockButtonTextDefault,
-          ]}>
-            {blockLoading ? '...' : isBlocked ? '✓ Đã chặn • Bỏ chặn' : '🚫 Chặn người dùng'}
-          </Text>
-        </Pressable>
+        {/* Nút hành động — nhắn tin + chặn */}
+        <View style={styles.actionRow}>
+          {!isOwnProfile && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.messageButton,
+                pressed && { opacity: 0.8 },
+              ]}
+              onPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'ChatTab',
+                  params: {
+                    screen: 'ChatDetailScreen',
+                    params: { partnerId: userId, partnerName: name },
+                  },
+                })
+              }>
+              <Text style={styles.messageButtonText}>💬 Nhắn tin</Text>
+            </Pressable>
+          )}
+
+          {!isOwnProfile && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.blockButton,
+                isBlocked ? styles.blockButtonActive : styles.blockButtonDefault,
+                pressed && { opacity: 0.75 },
+                blockLoading && { opacity: 0.5 },
+              ]}
+              onPress={toggleBlock}
+              disabled={blockLoading}>
+              <Text style={[
+                styles.blockButtonText,
+                isBlocked ? styles.blockButtonTextActive : styles.blockButtonTextDefault,
+              ]}>
+                {blockLoading ? '...' : isBlocked ? '✓ Bỏ chặn' : '🚫 Chặn'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {/* ─── Posts section header — 8px separator ─── */}
@@ -433,9 +457,29 @@ const styles = StyleSheet.create({
     backgroundColor: '#E4E6EB',
   },
 
+  // ─── Action row (nhắn tin + chặn) ────────────────────────────────────────
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  messageButton: {
+    flex: 1,
+    height: 40,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1877F2',
+  },
+  messageButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+
   // ─── Block button ─────────────────────────────────────────────────────────
   blockButton: {
-    marginTop: 12,
+    flex: 1,
     height: 40,
     borderRadius: 8,
     alignItems: 'center',

@@ -251,11 +251,11 @@ export default function VideoPickerScreen() {
       return;
     }
 
-    // HV phải có exerciseId và courseId
-    if (!isTeacherCreating && (!exerciseId || !courseId)) {
+    // HV phải có courseId (teacher's user ID)
+    if (!isTeacherCreating && !courseId) {
       Alert.alert(
-        'Chưa chọn bài tập',
-        'Hãy bấm "Nộp bài" từ một bài đăng của giáo viên trên trang chủ.',
+        'Thiếu thông tin',
+        'Hãy bấm "Nộp bài" từ trang Khóa học hoặc từ bài đăng của giáo viên.',
       );
       return;
     }
@@ -443,7 +443,7 @@ export default function VideoPickerScreen() {
           <View style={styles.progressCard}>
             <ActivityIndicator color={theme.colors.primary} size="small" />
             <Text style={styles.progressLabel}>
-              Đang upload lên server AI... {progress}%
+              {isTeacherCreating ? 'Đang đăng bài lên server...' : 'Đang nộp bài...'} {progress}%
             </Text>
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${progress}%` }]} />
@@ -467,14 +467,16 @@ export default function VideoPickerScreen() {
           ) : (
             <>
               <Text style={styles.analyzeBtnIcon}>📤</Text>
-              <Text style={styles.analyzeBtnText}>Nộp bài cho giáo viên</Text>
+              <Text style={styles.analyzeBtnText}>
+                {isTeacherCreating ? 'Đăng bài tập' : 'Nộp bài cho giáo viên'}
+              </Text>
             </>
           )}
         </Pressable>
 
         {!bothSelected && !uploading && (
           <Text style={styles.hintText}>
-            ⚠️ Cần chọn đủ cả 2 video trước khi nộp bài
+            ⚠️ Cần chọn đủ cả 2 video trước khi {isTeacherCreating ? 'đăng bài' : 'nộp bài'}
           </Text>
         )}
       </ScrollView>

@@ -11,34 +11,62 @@ import {
 } from 'react-native';
 import { apiClient } from '../../network/apiClient';
 import { getSocket } from '../../network/socket';
+import { useAuthStore } from '../../store/authStore';
 
 interface Message {
-  id: string;
-  senderId: string;
-  content: string;
-  createdAt: string;
+  messageId: string;
+  message: string;
+  created: string;
+  unread: string;
+  sender: {
+    id: string;
+    username: string;
+    avatar: string;
+  };
 }
 
 export default function ChatDetailScreen({ route }: any) {
-  const { partnerId, partnerName } = route.params;
+  const {
+    partnerId: routePartnerId,
+    partnerName: routePartnerName,
+    conversationId: routeConversationId,
+  } = route.params ?? {};
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [partnerName, setPartnerName] = useState<string>(routePartnerName || '');
+  const [conversationId, setConversationId] = useState<string>(routeConversationId || '');
+  const [partnerId, setPartnerId] = useState<string>(routePartnerId || '');
+
   const socket = getSocket();
   const flatListRef = useRef<FlatList>(null);
+  const { user } = useAuthStore();
 
-  // Gọi API get_conversation lấy lịch sử tin nhắn cũ
   const fetchMessageHistory = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.post('/get_conversation', {
-        partner_id: partnerId,
-        index: 0,
-        count: 50,
-      });
+      const body: Record<string, string> = { index: '0', count: '50' };
+      if (routeConversationId) {
+        body.conversationId = routeConversationId;
+      } else if (routePartnerId) {
+        body.partnerId = routePartnerId;
+      }
 
-      if (response.data?.code === '1000') {
-        setMessages(response.data?.data?.reverse() || []);
+      const response = await apiClient.post('/get_conversation', body);
+
+      if (response.data?.code === '1000' || response.data?.code === 1000) {
+        const conv = response.data?.data?.conversation;
+        const msgs: Message[] = response.data?.data?.data || [];
+
+        if (conv) {
+          if (conv.id) setConversationId(conv.id);
+          if (!partnerName && conv.partner?.username) setPartnerName(conv.partner.username);
+          if (!partnerId && conv.partner?.id) setPartnerId(conv.partner.id);
+          socket?.emit('joinchat', { conversationId: conv.id });
+        }
+
+        setMessages(msgs);
       }
     } catch (error) {
       console.log('Lỗi lấy lịch sử chat:', error);
@@ -50,24 +78,45 @@ export default function ChatDetailScreen({ route }: any) {
   useEffect(() => {
     fetchMessageHistory();
 
-    // Lắng nghe Socket realtime
+    const readBody: Record<string, string> = {};
+    if (routeConversationId) readBody.conversationId = routeConversationId;
+    else if (routePartnerId) readBody.partnerId = routePartnerId;
+    if (Object.keys(readBody).length > 0) {
+      apiClient.post('/set_read_message', readBody).catch(() => {});
+    }
+
     if (socket) {
-      socket.on('new_message', (incomingMessage: any) => {
-        if (
-          incomingMessage.senderId === partnerId ||
-          incomingMessage.receiverId === partnerId
-        ) {
-          setMessages(prevMessages => [...prevMessages, incomingMessage]);
-        }
+      socket.on('onmessage', (incomingMsg: any) => {
+        const newMsg: Message = {
+          messageId: incomingMsg.message_id,
+          message: incomingMsg.content,
+          created: incomingMsg.created,
+          unread: '0',
+          sender: {
+            id: incomingMsg.sender?.id ?? '',
+            username: incomingMsg.sender?.name ?? '',
+            avatar: incomingMsg.sender?.avatar ?? '',
+          },
+        };
+        setMessages(prev => [...prev, newMsg]);
+      });
+
+      socket.on('deletemessage', (data: any) => {
+        const deletedId = data.message_id;
+        setMessages(prev =>
+          prev.map(m => (m.messageId === deletedId ? { ...m, message: '' } : m)),
+        );
       });
     }
 
     return () => {
       if (socket) {
-        socket.off('new_message');
+        socket.off('onmessage');
+        socket.off('deletemessage');
       }
     };
-  }, [partnerId, socket]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -81,33 +130,45 @@ export default function ChatDetailScreen({ route }: any) {
     const messageContent = inputText.trim();
     setInputText('');
 
+    const tempId = `temp_${Date.now()}`;
+    const optimisticMsg: Message = {
+      messageId: tempId,
+      message: messageContent,
+      created: new Date().toISOString(),
+      unread: '0',
+      sender: {
+        id: user?.id ?? '',
+        username: user?.username ?? '',
+        avatar: user?.avatar ?? '',
+      },
+    };
+    setMessages(prev => [...prev, optimisticMsg]);
+
     try {
-      // Đánh dấu đã đọc tin nhắn hội thoại này
-      await apiClient.post('/set_read_message', { partner_id: partnerId });
+      const body: Record<string, string> = { message: messageContent };
+      if (conversationId) body.conversationId = conversationId;
+      else if (partnerId) body.partnerId = partnerId;
 
-      // Gửi realtime qua Socket cho đối phương
-      if (socket) {
-        socket.emit('send_message', {
-          receiverId: partnerId,
-          content: messageContent,
-        });
+      const response = await apiClient.post('/set_send_message', body);
+
+      if (response.data?.code === '1000' || response.data?.code === 1000) {
+        const { messageId: realId, conversationId: newConvId } = response.data.data ?? {};
+        setMessages(prev =>
+          prev.map(m => (m.messageId === tempId ? { ...m, messageId: realId ?? tempId } : m)),
+        );
+        if (newConvId && !conversationId) {
+          setConversationId(newConvId);
+          socket?.emit('joinchat', { conversationId: newConvId });
+        }
       }
-
-      // Cập nhật tin nhắn của chính mình lên giao diện tạm thời
-      const myNewMsg: Message = {
-        id: String(Date.now()),
-        senderId: 'MY_ID',
-        content: messageContent,
-        createdAt: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, myNewMsg]);
     } catch (error) {
+      setMessages(prev => prev.filter(m => m.messageId !== tempId));
       console.log('Lỗi gửi tin nhắn:', error);
     }
   };
 
   const renderMessageItem = ({ item }: { item: Message }) => {
-    const isMine = item.senderId !== partnerId;
+    const isMine = item.sender.id === user?.id;
     return (
       <View
         style={[styles.messageRow, isMine ? styles.myRow : styles.partnerRow]}
@@ -119,7 +180,7 @@ export default function ChatDetailScreen({ route }: any) {
           ]}
         >
           <Text style={isMine ? styles.myText : styles.partnerText}>
-            {item.content}
+            {item.message}
           </Text>
         </View>
       </View>
@@ -133,13 +194,13 @@ export default function ChatDetailScreen({ route }: any) {
       keyboardVerticalOffset={90}
     >
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{partnerName}</Text>
+        <Text style={styles.headerTitle}>{partnerName || '...'}</Text>
       </View>
 
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={item => item.id}
+        keyExtractor={item => item.messageId}
         renderItem={renderMessageItem}
         contentContainerStyle={{ padding: 16 }}
         refreshing={loading}
@@ -153,6 +214,8 @@ export default function ChatDetailScreen({ route }: any) {
           placeholderTextColor="#65676b"
           value={inputText}
           onChangeText={setInputText}
+          onSubmitEditing={handleSendMessage}
+          returnKeyType="send"
         />
         <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage}>
           <Text style={styles.sendButtonText}>Gửi</Text>
